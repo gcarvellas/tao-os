@@ -22,7 +22,7 @@ all: ./build/boot/boot.bin ./build/kernel.bin
 
 ./build/kernel.bin: $(FILES)
 	ld -g -relocatable $(FILES) -o ./build/kernelfull.o
-	gcc $(CFLAGS) -T ./linker.ld -o ./build/kernel.bin -ffreestanding -O0 -nostdlib ./build/kernelfull.o
+	gcc -T ./linker.ld -o ./build/kernel.bin -ffreestanding -O0 -nostdlib ./build/kernelfull.o
 
 ./build/kernel.asm.o:
 	nasm -f elf64 -g ./src/kernel.asm -o ./build/kernel.asm.o

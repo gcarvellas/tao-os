@@ -1,18 +1,22 @@
+BITS 16
+ORG 0x7c00
+
 ; Mix of "Main.asm" and "LongModeDirectly.asm" from https://wiki.osdev.org/Entering_Long_Mode_Directly
 %define FREE_SPACE 0x9000
-
-
-
-ORG 0x7C00
-BITS 16
  
 ; Main entry point where BIOS leaves us.
- 
+
+jmp short Main
+nop
+
+; TODO FAT16 Header
+
 Main:
-    jmp 0x0000:.FlushCS               ; Some BIOS' may load us at 0x0000:0x7C00 while other may load us at 0x07C0:0x0000.
+    jmp 0:.FlushCS               ; Some BIOS' may load us at 0x0000:0x7C00 while other may load us at 0x07C0:0x0000.
                                       ; Do a far jump to fix this issue, and reload CS to 0x0000.
  
 .FlushCS:   
+    cli
     xor ax, ax
  
     ; Set up segment registers.
@@ -25,7 +29,8 @@ Main:
     mov fs, ax
     mov gs, ax
     cld
- 
+    sti
+
     call CheckCPU                     ; Check whether we support Long Mode or not.
     jc .NoLongMode
  
@@ -33,7 +38,7 @@ Main:
     mov edi, FREE_SPACE
     ; Switch to Long Mode.
     jmp SwitchToLongMode
- 
+; TODO this won't work because we're exceeding the sector size. We want to load the 2nd sector and then jump 
  
 BITS 64
 .Long:
@@ -49,7 +54,6 @@ BITS 16
 .Die:
     hlt
     jmp .Die
- 
  
 %include "src/boot/long-mode.asm"
 BITS 16
@@ -121,5 +125,5 @@ Print:
  
  
 ; Pad out file.
-times 4096 - ($-$$) db 0
+times 510 - ($-$$) db 0
 dw 0xAA55

@@ -5,7 +5,7 @@
 %define CODE_SEG     0x0008
 %define DATA_SEG     0x0010
 
-%define KERNEL_VMA   0xFFFFFFFF80000000
+%define KERNEL_VMA   0x100000
 
 ALIGN 4
 IDT:
