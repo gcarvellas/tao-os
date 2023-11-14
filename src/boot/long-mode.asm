@@ -141,4 +141,5 @@ LongMode:
     mov [edi + 16], rax
 
     ; Jump to the kernel entrypoint
-    jmp CODE_SEG:KERNEL_VMA
+    lea rax, [KERNEL_VMA+CODE_SEG]
+    jmp rax

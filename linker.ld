@@ -1,4 +1,4 @@
-KERNEL_VMA = 1M;
+KERNEL_VMA = 3M;
 
 ENTRY(_start)
 OUTPUT_FORMAT(binary)
@@ -10,7 +10,7 @@ MEMORY
 
 SECTIONS
 {
-    . = 3M;
+    . = KERNEL_VMA;
 
     .text : ALIGN(4096)
     {
