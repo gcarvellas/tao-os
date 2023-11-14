@@ -5,7 +5,7 @@
 %define CODE_SEG     0x0008
 %define DATA_SEG     0x0010
 
-%define KERNEL_VMA   0x100000
+%define KERNEL_VMA   0x300000
 
 ALIGN 4
 IDT:
@@ -19,16 +19,16 @@ IDT:
 ; es:edi    Should point to a valid page-aligned 16KiB buffer, for the PML4, PDPT, PD and a PT.
 ; ss:esp    Should point to memory that can be used as a small (1 uint32_t) stack
  
-SwitchToLongMode:
+ SwitchToLongMode:
     ; Zero out the 16KiB buffer.
     ; Since we are doing a rep stosd, count should be bytes/4.   
     push di                           ; REP STOSD alters DI.
+    mov di, 0x10000 ; Start address of page memory
     mov ecx, 0x1000
     xor eax, eax
     cld
     rep stosd
     pop di                            ; Get DI back.
- 
  
     ; Build the Page Map Level 4.
     ; es:di points to the Page Map Level 4 table.
@@ -59,7 +59,7 @@ SwitchToLongMode:
     mov [es:di], eax
     add eax, 0x1000
     add di, 8
-    cmp eax, 0x200000                 ; If we did all 2MiB, end.
+    cmp eax, 0x201000                 ; 2MiB + start of page memory. If we did all 2MiB, end.
     jb .LoopPageTable
  
     pop di                            ; Restore DI.
@@ -121,7 +121,7 @@ LongMode:
     mov fs, ax
     mov gs, ax
     mov ss, ax
- 
+
     ; Blank out the screen to a blue color.
     mov edi, 0xB8000
     mov rcx, 500                      ; Since we are clearing uint64_t over here, we put the count as Count/4.
@@ -139,78 +139,6 @@ LongMode:
  
     mov rax, 0x1F211F641F6C1F72
     mov [edi + 16], rax
- 
-
-	mov eax, 1
-	mov ecx, 100 ; in the makefile we setup 100 sectors
-    mov rdi, KERNEL_VMA
-	call ata_lba_read
-;	jmp CODE_SEG:KERNEL_VMA
 
     ; Jump to the kernel entrypoint
-    mov rax, KERNEL_VMA
-    add rax, CODE_SEG
-    jmp rax
-	
-ata_lba_read:
-	mov ebx, eax ; Backup the LBA for later
-	
-
-	; Send the highest 8 bits of the lba to the hard disk controller
-	shr eax, 24
-	or eax, 0xE0 ; Select the master drive
-	mov dx, 0x1F6
-	out dx, al
-	; Finished sending the highest 8 bits of the lba
-	
-	; Send the total sectors to read
-	mov eax, ecx
-	mov dx, 0x1F2
-	out dx, al
-	; Finished sending the total sectors to read
-
-	; Send more bits of the LBA
-	mov eax, ebx ; Restore the backup LBA
-	mov dx, 0x1F3
-	out dx, al
-	; Finished sending mroe bits of the LBA		
-
-	; Send more bits of the LBA
-	mov dx, 0x1F4
-	mov eax, ebx ; Restore the backup LBA
-	shr eax, 8
-	out dx, al
-	; Finished sending more bits of the LBA
-
-	; Send upper 16 bits of the LBA
-	mov dx, 0x1F5
-	mov eax, ebx ; Restore the backup LBA
-	shr eax, 16
-	out dx, al
-	; Finished sending upper 16 bits of the LBA
-
-	mov dx, 0x1f7
-	mov al, 0x20
-	out dx, al
-
-	; Read all sectors into memory
-
-.next_sector:
-	push rcx
-	
-; Checking if we need to read
-.try_again:
-	mov dx, 0x1f7
-	in al, dx ; read 0x1f7 and put the result into the al register
-	test al, 8
-	jz .try_again
-	
-; We need to read 256 words at a time
-	mov ecx, 256 ;256 words = 512 bytes = 1 sector
-	mov dx, 0x1f0
-	rep insw ; reads a word from the io port specified from dx and stores it into the memory location specified in edi
-	pop rcx
-	loop .next_sector
-	; End of reading sectors into memory
-	ret
-
+    jmp CODE_SEG:KERNEL_VMA

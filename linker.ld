@@ -2,9 +2,15 @@ KERNEL_VMA = 1M;
 
 ENTRY(_start)
 OUTPUT_FORMAT(binary)
+
+MEMORY
+{
+    PAGES (rw) : ORIGIN = 0x10000, LENGTH = 2M
+}
+
 SECTIONS
 {
-    . = 1M;
+    . = 3M;
 
     .text : ALIGN(4096)
     {

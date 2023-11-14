@@ -103,8 +103,7 @@ CheckCPU:
 .NoLongMode:
     stc
     ret
- 
- 
+
 ; Prints out a message using the BIOS.
  
 ; es:si    Address of ASCIIZ string to print.
@@ -122,8 +121,7 @@ Print:
 .PrintDone:
     popad                             ; Pop all general purpose registers to save them.
     ret
- 
- 
+
 ; Pad out file.
 times 510 - ($-$$) db 0
 dw 0xAA55

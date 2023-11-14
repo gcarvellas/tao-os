@@ -4,7 +4,7 @@ CFLAGS = -static -g -ffreestanding -falign-jumps -falign-functions -falign-label
 		 -fstrength-reduce -fomit-frame-pointer -finline-functions -Wno-unused-function \
 		 -fno-builtin -Werror -Wno-unused-label -Wno-cpp -Wno-unused-parameter -nostdlib \
 		 -nostartfiles -nodefaultlibs -Wall -O0 -Iinc -fno-pie -no-pie
-RUST_FLAGS = -C link-arg=./linker.ld -C relocation-model=static \
+RUST_FLAGS = +nightly -C link-arg=./linker.ld -C relocation-model=static \
 			 -C prefer-dynamic=false --emit=obj
 
 # TODO there's hardcoded flags everywhere for debugging
@@ -28,7 +28,8 @@ all: ./build/boot/boot.bin ./build/kernel.bin
 	nasm -f elf64 -g ./src/kernel.asm -o ./build/kernel.asm.o
 
 ./build/kernel.o:
-	rustc $(RUST_FLAGS) --target x86_64-unknown-none -o ./build/kernel.o ./src/kernel.rs
+	# TODO ~/.cargo/bin/rustc is specifically for gentoo
+	~/.cargo/bin/rustc $(RUST_FLAGS) --target x86_64-unknown-none -o ./build/kernel.o ./src/kernel.rs
 
 clean:
 	rm -rf build
