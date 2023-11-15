@@ -1,34 +1,31 @@
-FILES = ./build/kernel.asm.o ./build/kernel.o
-INCLUDES = -I./src
-CFLAGS = -static -g -ffreestanding -falign-jumps -falign-functions -falign-labels -falign-loops \
-		 -fstrength-reduce -fomit-frame-pointer -finline-functions -Wno-unused-function \
-		 -fno-builtin -Werror -Wno-unused-label -Wno-cpp -Wno-unused-parameter -nostdlib \
-		 -nostartfiles -nodefaultlibs -Wall -O0 -Iinc -fno-pie -no-pie
+SRCDIR := src
+BUILDDIR := build
 RUST_FLAGS = +nightly -C link-arg=./linker.ld -C relocation-model=static \
 			 -C prefer-dynamic=false --emit=obj
 
-# TODO there's hardcoded flags everywhere for debugging
+ASMSOURCES := $(shell find $(SRCDIR) -name '*.asm')
+OBJFILES := $(patsubst $(SRCDIR)/%.asm, $(BUILDDIR)/%.o, $(ASMSOURCES))
 
-all: ./build/boot/boot.bin ./build/kernel.bin
-	dd if=./build/boot/boot.bin >> ./build/os.bin
-	dd if=./build/kernel.bin >> ./build/os.bin
+LINKER_SCRIPT := linker.ld
 
-	# TODO I think this is for alignment purposes... not sure 
-	dd if=/dev/zero bs=1048576 count=16 >> ./build/os.bin
+RUST_KERNEL_OBJ  := $(BUILDDIR)/kernel.o
+KERNEL_BIN  := $(BUILDDIR)/kernel.bin
 
-./build/boot/boot.bin:
-	mkdir --parents ./build/boot
-	nasm -f bin ./src/boot/boot.asm -o ./build/boot/boot.bin
+all: $(KERNEL_BIN)
+	mkdir -p $(BUILDDIR)/isofiles/boot/grub
+	cp $(KERNEL_BIN) $(BUILDDIR)/isofiles/boot/kernel.bin
+	cp ./grub.cfg $(BUILDDIR)/isofiles/boot/grub/
+	grub-mkrescue -o $(BUILDDIR)/tao-os.iso $(BUILDDIR)/isofiles
+	grub-file --is-x86-multiboot2 $(BUILDDIR)/tao-os.iso
 
-./build/kernel.bin: $(FILES)
-	ld -g -relocatable $(FILES) -o ./build/kernelfull.o
-	gcc -T ./linker.ld -o ./build/kernel.bin -ffreestanding -O0 -nostdlib ./build/kernelfull.o
+$(BUILDDIR)/%.o: $(SRCDIR)/%.asm
+	mkdir -p $(dir $@)
+	nasm -f elf64 $< -o $@
 
-./build/kernel.asm.o:
-	nasm -f elf64 -g ./src/kernel.asm -o ./build/kernel.asm.o
+$(KERNEL_BIN): $(OBJFILES) $(RUST_KERNEL_OBJ)
+	ld -T $(LINKER_SCRIPT) $^ -o $@
 
-./build/kernel.o:
-	# TODO ~/.cargo/bin/rustc is specifically for gentoo
+$(RUST_KERNEL_OBJ):
 	~/.cargo/bin/rustc $(RUST_FLAGS) --target x86_64-unknown-none -o ./build/kernel.o ./src/kernel.rs
 
 clean:

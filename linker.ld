@@ -1,55 +1,45 @@
-KERNEL_VMA = 3M;
+KERNEL_VMA = 2M;
 
 ENTRY(_start)
-OUTPUT_FORMAT(binary)
-
-MEMORY
-{
-    PAGES (rw) : ORIGIN = 0x10000, LENGTH = 2M
-}
 
 SECTIONS
 {
     . = KERNEL_VMA;
 
-    .text : ALIGN(4096)
+    KERNEL_START = .;
+
+    .multiboot :
     {
-        _code = .;
+        . = ALIGN(8);
+        KEEP(*(.multiboot))
+    }
+
+    .text BLOCK(4K) : ALIGN(4096) 
+    {
         *(.text)
     }
 
-    .asm : ALIGN(4096)
+    .rodata BLOCK(4K) : ALIGN(4096)
     {
-        _asm = .;
-        *(.asm)
-    }
-
-    .rodata : ALIGN(4096)
-    {
-        _rodata = .;
         *(.rodata)
     }
 
-   .data : ALIGN(4096)
+   .data BLOCK(4K): ALIGN(4096)
    {
-        _data = .;
         *(.data)
    }
 
-   .bss : ALIGN(4096)
+   .bss BLOCK(4K): ALIGN(4096)
    {
-       _bss = .;
+       *(COMMON)
        *(.bss)
-
-       /*
-        * You usually need to include generated COMMON symbols
-        * under kernel BSS section or use gcc's -fno-common
-        */
-
-        *(COMMON)
    }
 
-   _end = .;
+   	/* Without this kernel end is not incremented to avoid colliding with bss */
+	.phony : {
+
+	}
+    KERNEL_END = .;
 
    /DISCARD/ :
    {

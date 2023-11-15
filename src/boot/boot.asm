@@ -1,127 +1,105 @@
-BITS 16
-ORG 0x7c00
+; boot.asm
 
-; Mix of "Main.asm" and "LongModeDirectly.asm" from https://wiki.osdev.org/Entering_Long_Mode_Directly
-%define FREE_SPACE 0x9000
- 
-; Main entry point where BIOS leaves us.
+; The label start is our entry point. We have to make it
+; public so that the linker can use it.
+global _start
+extern kernel_main
 
-jmp short Main
-nop
+; we are still in 32-bit protected mode so we have to use
+; 32-bit wide instructions
+bits 32
 
-; TODO FAT16 Header
+; Flags for _large_ p2 aka. PDE page table entries
+PDE_PRESENT  equ 1 << 0
+PDE_WRITABLE equ 1 << 1
+PDE_LARGE    equ 1 << 7
 
-Main:
-    jmp 0:.FlushCS               ; Some BIOS' may load us at 0x0000:0x7C00 while other may load us at 0x07C0:0x0000.
-                                      ; Do a far jump to fix this issue, and reload CS to 0x0000.
- 
-.FlushCS:   
-    cli
-    xor ax, ax
- 
-    ; Set up segment registers.
-    mov ss, ax
-    ; Set up stack so that it starts below Main.
-    mov sp, Main
- 
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    cld
-    sti
 
-    call CheckCPU                     ; Check whether we support Long Mode or not.
-    jc .NoLongMode
- 
-    ; Point edi to a free space bracket.
-    mov edi, FREE_SPACE
-    ; Switch to Long Mode.
-    jmp SwitchToLongMode
-; TODO this won't work because we're exceeding the sector size. We want to load the 2nd sector and then jump 
- 
-BITS 64
-.Long:
+; GDT Flags
+
+_start:
+    ; Switching to long mode
+    ;
+    ; Step 1: Disable paging
+    ;
+    ; to disable paging set `CR0.PG` to `0`.
+
+    mov word [0xb8000], 0x0e4f ; 'O', yellow on black
+    mov word [0xb8002], 0x0e4b ; 'K', yellow on black
+
+    mov eax, cr0
+    and eax, ~(1 << 31)
+    mov cr0, eax
+
+    ; Step 2: Enable Physical Address Extension
+    mov eax, cr4
+    or eax, (1 << 5)
+    mov cr4, eax
+
+    ; Step 3: Set `cr3` register
+    mov eax, p4_table
+    mov cr3, eax
+
+    ; Step 4: Set the p2[1] entry to point to the _second_ 2 MiB frame
+	mov eax, (0x20_0000 | PDE_PRESENT | PDE_WRITABLE | PDE_LARGE)
+	mov [p2_table + 8], eax
+
+	; point the 0th entry to the first frame
+	mov eax, (0x00_0000 | PDE_PRESENT | PDE_WRITABLE | PDE_LARGE)
+	mov [p2_table], eax
+
+	; Step 5: Set the 0th entry of p3 to point to our p2 table
+	mov eax, p2_table ; load the address of the p2 table
+	or eax, (PDE_PRESENT | PDE_WRITABLE)
+	mov [p3_table], eax
+
+	; Step 6: Set the 0th entry of p4 to point to our p3 table
+	mov eax, p3_table
+	or eax, (PDE_PRESENT | PDE_WRITABLE)
+	mov [p4_table], eax
+
+	; Step 7: Set EFER.LME to 1 to enable the long mode
+	mov ecx, 0xC0000080
+	rdmsr
+	or  eax, 1 << 8
+	wrmsr
+
+	; Step 8: enable paging
+	mov eax, cr0
+	or eax, 1 << 31
+	mov cr0, eax
+
+    lgdt [gdt64.pointer]
+    jmp gdt64.code:longstart
+   
+section .text
+bits 64
+longstart:
+
+    ; TODO setup the stack
+
+	call kernel_main
+
     hlt
-    jmp .Long
- 
-BITS 16
- 
-.NoLongMode:
-    mov si, NoLongMode
-    call Print
- 
-.Die:
-    hlt
-    jmp .Die
- 
-%include "src/boot/long-mode.asm"
-BITS 16
- 
- 
-NoLongMode db "ERROR: CPU does not support long mode.", 0x0A, 0x0D, 0
- 
- 
-; Checks whether CPU supports long mode or not.
- 
-; Returns with carry set if CPU doesn't support long mode.
- 
-CheckCPU:
-    ; Check whether CPUID is supported or not.
-    pushfd                            ; Get flags in EAX register.
- 
-    pop eax
-    mov ecx, eax  
-    xor eax, 0x200000 
-    push eax 
-    popfd
- 
-    pushfd 
-    pop eax
-    xor eax, ecx
-    shr eax, 21 
-    and eax, 1                        ; Check whether bit 21 is set or not. If EAX now contains 0, CPUID isn't supported.
-    push ecx
-    popfd 
- 
-    test eax, eax
-    jz .NoLongMode
- 
-    mov eax, 0x80000000   
-    cpuid                 
- 
-    cmp eax, 0x80000001               ; Check whether extended function 0x80000001 is available are not.
-    jb .NoLongMode                    ; If not, long mode not supported.
- 
-    mov eax, 0x80000001  
-    cpuid                 
-    test edx, 1 << 29                 ; Test if the LM-bit, is set or not.
-    jz .NoLongMode                    ; If not Long mode not supported.
- 
-    ret
- 
-.NoLongMode:
-    stc
-    ret
 
-; Prints out a message using the BIOS.
- 
-; es:si    Address of ASCIIZ string to print.
- 
-Print:
-    pushad
-.PrintLoop:
-    lodsb                             ; Load the value at [@es:@si] in @al.
-    test al, al                       ; If AL is the terminator character, stop printing.
-    je .PrintDone                  	
-    mov ah, 0x0E	
-    int 0x10
-    jmp .PrintLoop                    ; Loop till the null character not found.
- 
-.PrintDone:
-    popad                             ; Pop all general purpose registers to save them.
-    ret
+    
+section .bss
+; must be page aligned
+align 4096
+p4_table:
+    resb 4096
+p3_table:
+    resb 4096
+p2_table:
+    resb 4096
+    
+section .rodata
+gdt64:
+	dq 0
+.code: equ $ - gdt64
+	dq (1 << 43) | (1 << 44) | (1 << 47) | (1 << 53)
+.pointer:
+	dw $ - gdt64 - 1 ; length of the gdt64 table
+	dq gdt64         ; addess of the gdt64 table
 
-; Pad out file.
-times 510 - ($-$$) db 0
-dw 0xAA55
+section .text

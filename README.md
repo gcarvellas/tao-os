@@ -1,10 +1,23 @@
 # Tao OS
 
-This project is WIP and doesn't work right now
+A hobbyist 64-bit kernel written in Rust. The goal of this project is to learn about Operating Systems development. 
 
-TODO:
+## Building Tao OS ISO file
 
-- [ ] Load rust into the kernel through the bootloader via ata_lba_read 
+### Requirements:
+- Rust
+- nasm
+- grub
 
-- [ ] move the kernel VMA address to a higher half address
-- [ ] move the page table address somewhere else (not in linker script)
+### Steps
+
+1. Run `make clean`
+2. Run `make all`
+
+## Running with QEMU
+
+After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
+
+## TODO:
+
+- [ ] Get the kernel booting (multiboot header invalid)
