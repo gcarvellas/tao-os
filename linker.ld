@@ -2,16 +2,35 @@ KERNEL_VMA = 2M;
 
 ENTRY(_start)
 
+MAGIC_NUMBER = 0xe85250d6;
+
 SECTIONS
 {
     . = KERNEL_VMA;
 
     KERNEL_START = .;
 
-    .multiboot :
+    .boot :
     {
-        . = ALIGN(8);
-        KEEP(*(.multiboot))
+        header_start = .;
+
+        /* Magic number */
+        LONG(MAGIC_NUMBER)
+        /* Architecture 0: Protected mode i386 */
+        LONG(0)
+        /* Header length */
+        LONG(header_end - header_start)
+        /* Checksum */
+        LONG(0x100000000 - (MAGIC_NUMBER + (header_end - header_start)))
+        /* Required end tag */
+        /* Type */
+        SHORT(0)
+        /* Flags */
+        SHORT(0)
+        /* Size */
+        LONG(8)
+
+        header_end = .;
     }
 
     .text BLOCK(4K) : ALIGN(4096) 

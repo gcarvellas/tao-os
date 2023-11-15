@@ -9,11 +9,11 @@ OBJFILES := $(patsubst $(SRCDIR)/%.asm, $(BUILDDIR)/%.o, $(ASMSOURCES))
 LINKER_SCRIPT := linker.ld
 
 RUST_KERNEL_OBJ  := $(BUILDDIR)/kernel.o
-KERNEL_BIN  := $(BUILDDIR)/kernel.bin
+KERNEL_ELF  := $(BUILDDIR)/kernel.elf
 
-all: $(KERNEL_BIN)
+all: $(KERNEL_ELF)
 	mkdir -p $(BUILDDIR)/isofiles/boot/grub
-	cp $(KERNEL_BIN) $(BUILDDIR)/isofiles/boot/kernel.bin
+	cp $(KERNEL_ELF) $(BUILDDIR)/isofiles/boot/kernel.elf
 	cp ./grub.cfg $(BUILDDIR)/isofiles/boot/grub/
 	grub-mkrescue -o $(BUILDDIR)/tao-os.iso $(BUILDDIR)/isofiles
 	grub-file --is-x86-multiboot2 $(BUILDDIR)/tao-os.iso
@@ -22,11 +22,11 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.asm
 	mkdir -p $(dir $@)
 	nasm -f elf64 $< -o $@
 
-$(KERNEL_BIN): $(OBJFILES) $(RUST_KERNEL_OBJ)
-	ld -T $(LINKER_SCRIPT) $^ -o $@
+$(KERNEL_ELF): $(OBJFILES) $(RUST_KERNEL_OBJ)
+	ld -m elf_x86_64 -nostdlib -T $(LINKER_SCRIPT) $^ -o $@
 
 $(RUST_KERNEL_OBJ):
-	~/.cargo/bin/rustc $(RUST_FLAGS) --target x86_64-unknown-none -o ./build/kernel.o ./src/kernel.rs
+	~/.cargo/bin/rustc $(RUST_FLAGS) --target x86_64-unknown-none -o $(BUILDDIR)/kernel.o ./src/kernel.rs
 
 clean:
 	rm -rf build
