@@ -31,14 +31,16 @@ SECTIONS
         LONG(8)
 
         header_end = .;
-    }
+  }
 
-    .text BLOCK(4K) : ALIGN(4096) 
-    {
-        *(.text)
-    }
+  .text BLOCK(4K) : ALIGN(4096) 
+  {
+          KEEP(*(.text.start))
+          *(.text)
+          *(.text*)
+  }
 
-    .rodata BLOCK(4K) : ALIGN(4096)
+.rodata BLOCK(4K) : ALIGN(4096)
     {
         *(.rodata)
     }

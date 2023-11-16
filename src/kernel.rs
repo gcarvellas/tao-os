@@ -7,18 +7,14 @@ use core::ptr;
 const VIDEO_ADDRESS: *mut u8 = 0xb8000 as *mut u8;
 
 #[no_mangle]
-pub fn kernel_main() -> () {
-    // TODO for testing
+pub extern "C" fn kernel_main() -> ! {
     unsafe {
-        ptr::write_volatile(VIDEO_ADDRESS.offset(0), 0x4f);
-        ptr::write_volatile(VIDEO_ADDRESS.offset(1), 0x0e);
-        ptr::write_volatile(VIDEO_ADDRESS.offset(2), 0x4b);
-        ptr::write_volatile(VIDEO_ADDRESS.offset(3), 0x0e);
-    }
+        let vga = 0xb8000 as *mut u64;
 
-    loop {
+        *vga = 0x2f592f412f4b2f4f;
+    };
 
-    }
+    loop { }
 }
 
 #[panic_handler]

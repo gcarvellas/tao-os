@@ -61,7 +61,7 @@ _start:
 	; Step 7: Set EFER.LME to 1 to enable the long mode
 	mov ecx, 0xC0000080
 	rdmsr
-	or  eax, 1 << 8
+	or eax, 1 << 8
 	wrmsr
 
 	; Step 8: enable paging
