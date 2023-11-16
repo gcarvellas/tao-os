@@ -1,0 +1,18 @@
+[package]
+name = "tao-os"
+version = "0.0.1"
+authors = ["gcarvellas"]
+
+[workspace]
+
+[dependencies]
+
+[lib]
+name = "kernel"
+crate-type = ["staticlib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

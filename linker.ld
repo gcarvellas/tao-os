@@ -43,6 +43,7 @@ SECTIONS
 .rodata BLOCK(4K) : ALIGN(4096)
     {
         *(.rodata)
+        *(.rodata*)
     }
 
    .data BLOCK(4K): ALIGN(4096)
@@ -54,6 +55,12 @@ SECTIONS
    {
        *(COMMON)
        *(.bss)
+   }
+
+   .debug BLOCK(4K) : ALIGN(4096)
+   {
+        *(.debug)
+        *(.debug*)
    }
 
    	/* Without this kernel end is not incremented to avoid colliding with bss */

@@ -23,3 +23,4 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
 - [ ] The docker builder makes the build files as root. Make it the current user
 - [ ] Replace makefile with cargo.toml
+- [ ] Have production build steps as well as debug
