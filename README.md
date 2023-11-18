@@ -22,7 +22,7 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
 ## Features
 
-- [*] Printing with VGA Text Mode
+- [x] Printing with VGA Text Mode
 
 ## TODO:
 
