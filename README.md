@@ -8,7 +8,8 @@ A hobbyist 64-bit operating system written in Rust. The goal of this project is 
 - Rust
 - nasm
 - grub
-- Docker
+
+Or alternatively, you can use Docker
 
 ### Steps
 
