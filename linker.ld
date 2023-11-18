@@ -40,7 +40,13 @@ SECTIONS
           *(.text*)
   }
 
-.rodata BLOCK(4K) : ALIGN(4096)
+   .got BLOCK(4K) : ALIGN(4096)
+    {
+        *(.got)
+        *(.got*)
+    }
+
+   .rodata BLOCK(4K) : ALIGN(4096)
     {
         *(.rodata)
         *(.rodata*)
@@ -49,6 +55,7 @@ SECTIONS
    .data BLOCK(4K): ALIGN(4096)
    {
         *(.data)
+        *(.data*)
    }
 
    .bss BLOCK(4K): ALIGN(4096)

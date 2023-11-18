@@ -10,7 +10,9 @@ use core::panic::PanicInfo;
 
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
+
     let mut display = VgaDisplay::new();
+
     // TODO clear display
     
     display.write_char('H');
@@ -21,7 +23,7 @@ pub extern "C" fn kernel_main() -> ! {
     display.write_char('!');
 
     // For now, this should panic since write_fmt is not implemented
-    write_str!(display, "Test!");
+    //write_str!(display, "Test!");
 
     loop { }
 }

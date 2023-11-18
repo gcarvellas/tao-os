@@ -1,6 +1,6 @@
 use core::fmt::Write;
-extern crate alloc;
-use alloc::boxed::Box;
+//extern crate alloc;
+//use alloc::boxed::Box;
 
 const VGA_WIDTH: usize = 80;
 const VGA_HEIGHT: usize = 20;
@@ -12,8 +12,8 @@ struct Buffer {
 
 pub struct VgaDisplay {
     buffer: &'static mut Buffer,
-    row: &'static mut usize,
-    col: &'static mut usize
+    row: usize,
+    col: usize
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,26 +56,26 @@ struct ScreenChar {
 
 impl VgaDisplay {
     pub fn new() -> VgaDisplay {
-        let mut _row = Box::new(0);
-        let mut _col = Box::new(0);
+        let mut _row = 0;
+        let mut _col = 0;
 
         VgaDisplay {
             buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
-            row: Box::leak(_row), // TODO implement the heap
-            col: Box::leak(_col) 
+            row: _row,
+            col: _col
         }
     }
     fn backspace(&mut self) -> core::fmt::Result {
-        if *self.row == 0 && *self.col == 0 {
+        if self.row == 0 && self.col == 0 {
             return Ok(());
         }
-        if *self.col == 0 {
-            *self.row-=1;
-            *self.col=VGA_WIDTH;
+        if self.col == 0 {
+            self.row-=1;
+            self.col=VGA_WIDTH;
         }
-        *self.col-=1;
+        self.col-=1;
         self.write_char(' ');
-        *self.col-=1;
+        self.col-=1;
         return Ok(()); 
     }
     fn putchar(&mut self, x: usize, y: usize, c: char, color: ColorCode) -> () {
@@ -94,8 +94,8 @@ impl Write for VgaDisplay {
     fn write_char(&mut self, c: char) -> core::fmt::Result {
         match c {
             '\x0A' => { // TODO is this \n?
-                *self.row+=1;
-                *self.col=0;
+                self.row+=1;
+                self.col=0;
                 Ok(())
             },
             '\x08' => { // TODO is this backspace?
@@ -103,11 +103,11 @@ impl Write for VgaDisplay {
                 Ok(())
             },
             c => {
-                self.putchar(*self.col, *self.row, c, ColorCode::new(Color::Black, Color::White)); // TODO Support colors other than white
-                *self.col+=1;
-                if self.col >= &mut VGA_WIDTH {
-                    *self.col = 0;
-                    *self.row += 1;
+                self.putchar(self.col, self.row, c, ColorCode::new(Color::Black, Color::White)); // TODO Support colors other than white
+                self.col+=1;
+                if self.col >= VGA_WIDTH {
+                    self.col = 0;
+                    self.row += 1;
                 }
                 Ok(())
             }
