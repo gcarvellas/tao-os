@@ -4,7 +4,7 @@ LINKER_SCRIPT := linker.ld
 
 RUST_FLAGS = +nightly
 ASM_FLAGS = -g -f elf64
-LINKER_FLAGS = -m elf_x86_64 -nostdlib
+LINKER_FLAGS = -g -m elf_x86_64 -nostdlib
 
 ASMSOURCES := $(shell find $(SRCDIR) -name '*.asm')
 OBJFILES := $(patsubst $(SRCDIR)/%.asm, $(BUILDDIR)/%.o, $(ASMSOURCES))

@@ -1,13 +1,14 @@
 use core::fmt::Write;
-//extern crate alloc;
-//use alloc::boxed::Box;
+
+extern crate volatile;
+use self::volatile::Volatile;
 
 const VGA_WIDTH: usize = 80;
 const VGA_HEIGHT: usize = 20;
 
 #[repr(transparent)]
 struct Buffer {
-    addr: &'static mut [[ScreenChar; VGA_WIDTH]; VGA_HEIGHT]
+    addr: [[Volatile<ScreenChar>; VGA_WIDTH]; VGA_HEIGHT],
 }
 
 pub struct VgaDisplay {
@@ -59,15 +60,23 @@ impl VgaDisplay {
         let mut _row = 0;
         let mut _col = 0;
 
-        VgaDisplay {
+        let mut res = VgaDisplay {
             buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
             row: _row,
             col: _col
+        };
+
+        // Clears the screen
+        for y in 0..VGA_HEIGHT {
+            for x in 0..VGA_WIDTH {
+                res.putchar(x, y, ' ', ColorCode::new(Color::White, Color::Black));
+            }
         }
+        return res;
     }
-    fn backspace(&mut self) -> core::fmt::Result {
+    fn backspace(&mut self) -> () {
         if self.row == 0 && self.col == 0 {
-            return Ok(());
+            return;
         }
         if self.col == 0 {
             self.row-=1;
@@ -76,24 +85,27 @@ impl VgaDisplay {
         self.col-=1;
         self.write_char(' ');
         self.col-=1;
-        return Ok(()); 
     }
     fn putchar(&mut self, x: usize, y: usize, c: char, color: ColorCode) -> () {
-        self.buffer.addr[y][x] = ScreenChar {
+        self.buffer.addr[y][x].write(ScreenChar {
             ascii_character: c as u8,
             color_code: color
-        };
+        });
     }
 }
 
 impl Write for VgaDisplay {
+
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        unimplemented!();
+        for c in s.chars() { 
+            self.write_char(c);
+        }
+        Ok(())
     }
 
     fn write_char(&mut self, c: char) -> core::fmt::Result {
         match c {
-            '\x0A' => { // TODO is this \n?
+            '\x0A' => {
                 self.row+=1;
                 self.col=0;
                 Ok(())
@@ -103,7 +115,7 @@ impl Write for VgaDisplay {
                 Ok(())
             },
             c => {
-                self.putchar(self.col, self.row, c, ColorCode::new(Color::Black, Color::White)); // TODO Support colors other than white
+                self.putchar(self.col, self.row, c, ColorCode::new(Color::White, Color::Black)); // TODO Support colors other than white
                 self.col+=1;
                 if self.col >= VGA_WIDTH {
                     self.col = 0;
@@ -112,9 +124,5 @@ impl Write for VgaDisplay {
                 Ok(())
             }
         }
-    }
-
-    fn write_fmt(mut self: &mut Self, args: core::fmt::Arguments<'_>) -> core::fmt::Result {
-        unimplemented!();
     }
 }

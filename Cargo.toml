@@ -6,13 +6,10 @@ authors = ["gcarvellas"]
 [workspace]
 
 [dependencies]
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
+spin = "0.9.8"
+volatile = "0.2.6"
 
 [lib]
 name = "kernel"
 crate-type = ["staticlib"]
-
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"

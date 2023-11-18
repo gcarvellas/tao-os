@@ -1,40 +1,35 @@
+#![feature(panic_info_message)]
+
 #![no_std]
 #![no_main]
 
 mod io;
-mod status;
-
-use core::fmt::Write;
+extern crate lazy_static;
+extern crate spin;
 use crate::io::vga::VgaDisplay;
 use core::panic::PanicInfo;
+use lazy_static::lazy_static;
+use spin::Mutex;
+
+lazy_static! {
+    static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::new());
+}
+
+#[panic_handler]
+fn panic(panic_info: &PanicInfo) -> ! {
+    if let Some(args) = panic_info.message() {
+        println!("Kernel Panic! {}", args);
+    } else {
+        println!("Kernel Panic! Unknown panic message.");
+    }
+    loop {}
+}
 
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
 
-    let mut display = VgaDisplay::new();
+    println!("I'm using the print macro rn!{}", "test");
 
-    // TODO clear display
-    
-    display.write_char('H');
-    display.write_char('e');
-    display.write_char('l');
-    display.write_char('l');
-    display.write_char('o');
-    display.write_char('!');
-
-    // For now, this should panic since write_fmt is not implemented
-    //write_str!(display, "Test!");
-
+    unimplemented!();
     loop { }
-}
-
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    unsafe {
-        let vga = 0xb8020 as *mut u64;
-
-        *vga = 0x2f592f412f4b2f4f; // prints TEST
-    };
-
-    loop {}
 }
