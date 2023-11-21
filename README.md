@@ -27,7 +27,8 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
 ## TODO:
 
-- Heap
+- Paging implementation in boot is broken (see kernel.rs)
+- implement deallocate
 - GDT/IDT
 - TSS
 - Paging

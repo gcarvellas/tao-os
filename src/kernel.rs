@@ -1,3 +1,4 @@
+// Required for panic handler
 #![feature(panic_info_message)]
 
 #![no_std]
@@ -22,11 +23,25 @@ lazy_static! {
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
+    println!("Kernel Panic! :( \n");
     if let Some(args) = panic_info.message() {
-        println!("Kernel Panic! {}", args);
+        println!("Message: {}", args);
     } else {
-        println!("Kernel Panic! Unknown panic message.");
+        println!("Message: Unknown");
     }
+
+    if let Some(location) = panic_info.location() {
+        println!("Location: Panic occurred in file '{}' at line {}", location.file(), location.line());
+    } else {
+        println!("Location: Unknown");
+    }
+
+    if let Some(payload) = panic_info.payload().downcast_ref::<&str>() {
+        println!("Payload: {}", payload);
+    } else {
+        println!("Payload: Unknown");
+    }
+
     loop {}
 }
 
@@ -35,9 +50,13 @@ pub extern "C" fn kernel_main() -> ! {
 
     println!("This is currently using the rust println! macro. {}", "Hello World");
 
+    // TODO this will work, except paging is implemented horribly wrong. Accessing 0x1000000 
+    // (the first addr given from malloc), will page fault. Workaround: set 
+    // config.rs:HEAP_ADDRESS to 0x100000 instead
     let tmp = Box::new(42);
     println!("This is on the heap: {}", tmp);
-    
+   
+    println!("TODO: Implement free");
     unimplemented!();
 
     loop { }

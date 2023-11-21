@@ -2,13 +2,16 @@ use core::alloc::{Layout, GlobalAlloc};
 
 use crate::{config::{HEAP_SIZE_BYTES, HEAP_BLOCK_SIZE, HEAP_ADDRESS, HEAP_TABLE_ADDRESS}, status::ErrorCode};
 
+use core::sync::atomic::{AtomicPtr, Ordering};
 use super::heap::Heap;
 
 extern crate spin;
 use spin::Mutex;
 extern crate lazy_static;
 use lazy_static::lazy_static;
+extern crate volatile;
 
+use println;
 struct KernelHeap {
     heap: Heap
 }
@@ -16,7 +19,8 @@ struct KernelHeap {
 impl KernelHeap {
     fn default() -> Result<KernelHeap, ErrorCode> {
         let total_table_entries = HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE;
-        let end = HEAP_ADDRESS + HEAP_SIZE_BYTES; 
+
+        let end = AtomicPtr::new(unsafe { HEAP_ADDRESS.load(Ordering::Relaxed).add(HEAP_SIZE_BYTES) });
         let _heap = Heap::new(HEAP_ADDRESS, end, total_table_entries, HEAP_TABLE_ADDRESS).unwrap(); 
         return Ok(KernelHeap {
             heap: _heap,
