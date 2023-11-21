@@ -78,6 +78,12 @@ impl Heap {
         return (_s_addr + (block * HEAP_BLOCK_SIZE)) as *mut u8;
     }
 
+    fn address_to_block(&mut self, address: *mut u8) -> usize {
+        let _s_addr = self.s_addr.load(Ordering::Relaxed) as usize;
+        let _address = address as usize;
+        return (_address - _s_addr) / HEAP_BLOCK_SIZE;
+    }
+
     fn get_start_block(&mut self, total_blocks: usize) -> Result<usize, ErrorCode> {
         let mut curr_block = 0;
         let mut start_block: isize = -1;
@@ -113,11 +119,11 @@ impl Heap {
             entry |= HEAP_BLOCK_HAS_NEXT;
         }
         for i in start_block..end_block+1 {
+            self.table.entries[i].write(entry);
             entry = HEAP_BLOCK_TABLE_ENTRY_TAKEN;
             if end_block > 0 && i != end_block - 1 {
                 entry |= HEAP_BLOCK_HAS_NEXT;
             }
-            self.table.entries[i].write(entry);
         }
     }
 
@@ -128,12 +134,23 @@ impl Heap {
         return Ok(address);
     }
 
-    pub fn heap_malloc(&mut self, size: usize) -> Result<*mut u8, ErrorCode> {
+    fn mark_blocks_free(&mut self, starting_block: usize) -> () {
+        for i in starting_block..self.table.entries.len() {
+            let entry = self.table.entries[i].clone();
+            self.table.entries[i].write(HEAP_BLOCK_TABLE_ENTRY_FREE);
+            if entry.read() & HEAP_BLOCK_HAS_NEXT == 0 {
+                break;
+            }
+        }
+    }
+
+    pub fn malloc(&mut self, size: usize) -> Result<*mut u8, ErrorCode> {
         let aligned_size = heap_align_value_to_upper(size);
         let total_blocks = aligned_size / HEAP_BLOCK_SIZE;
         return self.malloc_blocks(total_blocks);
     }
-    pub fn heap_free(&mut self, ptr: *mut u8) -> Result<(), ErrorCode> {
-        unimplemented!();
+    pub fn free(&mut self, ptr: *mut u8) -> () {
+        let block = self.address_to_block(ptr);
+        self.mark_blocks_free(block);
     }
 }

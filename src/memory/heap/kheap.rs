@@ -11,7 +11,6 @@ extern crate lazy_static;
 use lazy_static::lazy_static;
 extern crate volatile;
 
-use println;
 struct KernelHeap {
     heap: Heap
 }
@@ -34,11 +33,11 @@ struct KernelAllocator;
 
 unsafe impl GlobalAlloc for KernelAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        return KERNEL_HEAP.lock().heap.heap_malloc(layout.size()).unwrap();
+        return KERNEL_HEAP.lock().heap.malloc(layout.size()).unwrap();
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        return KERNEL_HEAP.lock().heap.heap_free(ptr).unwrap();
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        return KERNEL_HEAP.lock().heap.free(ptr);
     }
 }
 

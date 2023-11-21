@@ -24,11 +24,10 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 ## Features
 
 - [x] Printing with VGA Text Mode
+- [x] Memory Allocation with First Fit Algorithm
 
 ## TODO:
 
-- Paging implementation in boot is broken (see kernel.rs)
-- implement deallocate
 - GDT/IDT
 - TSS
 - Paging
@@ -36,6 +35,8 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 - Keyboard driver
 - Processes/Tasks (User Programs)
 
+- Improve the paging allocation with the macro in boot.asm. Current way is very hacky.
+- Replace First Fit with Slab Allocation algorithm
 - The docker builder makes the build files as root. Make it the current user
 - Replace makefile with cargo.toml
 - Have production build steps as well as debug

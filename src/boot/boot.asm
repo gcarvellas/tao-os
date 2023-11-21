@@ -1,12 +1,32 @@
+; https://wiki.osdev.org/Setting_Up_Long_Mode
+
 global _start
 extern kernel_main
 
 bits 32
 
+%macro SETUP_P2_ENTRY 3 ; Macro with 3 parameters: p2_table, index, and frame_address
+    mov eax, (%3 | PDE_PRESENT | PDE_WRITABLE | PDE_LARGE)
+    mov [ %1 + %2 * 8], eax
+%endmacro
+
 ; Flags for _large_ p2 aka. PDE page table entries
 PDE_PRESENT  equ 1 << 0
 PDE_WRITABLE equ 1 << 1
 PDE_LARGE    equ 1 << 7
+
+; GDT Access bits
+PRESENT        equ 1 << 7
+NOT_SYS        equ 1 << 4
+EXEC           equ 1 << 3
+DC             equ 1 << 2
+RW             equ 1 << 1
+ACCESSED       equ 1 << 0
+ 
+; GDT Flags bits
+GRAN_4K       equ 1 << 7
+SZ_32         equ 1 << 6
+LONG_MODE     equ 1 << 5
 
 _start:
 
@@ -27,14 +47,20 @@ _start:
     ; Set cr3 register
     mov eax, p4_table
     mov cr3, eax
-
-    ; Set the p2[1] entry to point to the _second_ 2 MiB frame
-	mov eax, (0x20_0000 | PDE_PRESENT | PDE_WRITABLE | PDE_LARGE)
-	mov [p2_table + 8], eax
-
-	; point the 0th entry to the first frame
-	mov eax, (0x00_0000 | PDE_PRESENT | PDE_WRITABLE | PDE_LARGE)
-	mov [p2_table], eax
+    
+    ; Each entry is 2MiB
+    ; TODO improve this with a better macro
+    SETUP_P2_ENTRY p2_table, 0, 0x00_0000
+    SETUP_P2_ENTRY p2_table, 1, 0x20_0000
+    SETUP_P2_ENTRY p2_table, 2, 0x40_0000
+    SETUP_P2_ENTRY p2_table, 3, 0x60_0000
+    SETUP_P2_ENTRY p2_table, 4, 0x60_0000
+    SETUP_P2_ENTRY p2_table, 5, 0x80_0000
+    SETUP_P2_ENTRY p2_table, 6, 0x100_0000
+    SETUP_P2_ENTRY p2_table, 7, 0x120_0000
+    SETUP_P2_ENTRY p2_table, 8, 0x140_0000
+    SETUP_P2_ENTRY p2_table, 9, 0x160_0000
+    SETUP_P2_ENTRY p2_table, 10, 0x180_0000
 
 	; Set the 0th entry of p3 to point to our p2 table
 	mov eax, p2_table ; load the address of the p2 table
@@ -57,8 +83,8 @@ _start:
 	or eax, 1 << 31
 	mov cr0, eax
 
-    lgdt [gdt64.pointer]
-    jmp gdt64.code:longstart
+    lgdt [GDT.Pointer]
+    jmp GDT.Code:longstart
    
 section .text
 bits 64
@@ -81,12 +107,26 @@ stack_bottom:
 stack_top:
 
 section .rodata
-gdt64:
-	dq 0
-.code: equ $ - gdt64
-	dq (1 << 43) | (1 << 44) | (1 << 47) | (1 << 53)
-.pointer:
-	dw $ - gdt64 - 1 ; length of the gdt64 table
-	dq gdt64         ; addess of the gdt64 table
+GDT:
+    .Null: equ $ - GDT
+        dq 0
+    .Code: equ $ - GDT
+        dd 0xFFFF                                   ; Limit & Base (low, bits 0-15)
+        db 0                                        ; Base (mid, bits 16-23)
+        db PRESENT | NOT_SYS | EXEC | RW            ; Access
+        db GRAN_4K | LONG_MODE | 0xF                ; Flags & Limit (high, bits 16-19)
+        db 0                                        ; Base (high, bits 24-31)
+    .Data: equ $ - GDT
+        dd 0xFFFF                                   ; Limit & Base (low, bits 0-15)
+        db 0                                        ; Base (mid, bits 16-23)
+        db PRESENT | NOT_SYS | RW                   ; Access
+        db GRAN_4K | SZ_32 | 0xF                    ; Flags & Limit (high, bits 16-19)
+        db 0                                        ; Base (high, bits 24-31)
+    .TSS: equ $ - GDT
+        dd 0x00000068
+        dd 0x00CF8900
+    .Pointer:
+        dw $ - GDT - 1
+        dq GDT
 
 section .text

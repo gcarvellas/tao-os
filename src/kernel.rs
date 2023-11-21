@@ -45,18 +45,20 @@ fn panic(panic_info: &PanicInfo) -> ! {
     loop {}
 }
 
+fn test_malloc() -> () {
+    let tmp = Box::new(42);
+    println!("This is on the heap: {}.", tmp);
+}
+
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
 
     println!("This is currently using the rust println! macro. {}", "Hello World");
-
-    // TODO this will work, except paging is implemented horribly wrong. Accessing 0x1000000 
-    // (the first addr given from malloc), will page fault. Workaround: set 
-    // config.rs:HEAP_ADDRESS to 0x100000 instead
-    let tmp = Box::new(42);
-    println!("This is on the heap: {}", tmp);
    
-    println!("TODO: Implement free");
+    test_malloc();
+    println!("Successfully deallocated memory.");
+
+    println!("Testing a kernel panic using Rust's unimplemented! macro.");
     unimplemented!();
 
     loop { }
