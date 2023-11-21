@@ -48,15 +48,35 @@ impl ColorCode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)] #[repr(C)]
 struct ScreenChar {
     ascii_character: u8,
     color_code: ColorCode,
 }
 
 impl VgaDisplay {
-    pub fn new() -> VgaDisplay {
+    fn backspace(&mut self) -> () {
+        if self.row == 0 && self.col == 0 {
+            return;
+        }
+        if self.col == 0 {
+            self.row-=1;
+            self.col=VGA_WIDTH;
+        }
+        self.col-=1;
+        self.putchar(self.col, self.row, ' ', ColorCode::new(Color::White, Color::Black)); // TODO Support colors other than white
+        self.col-=1;
+    }
+    fn putchar(&mut self, x: usize, y: usize, c: char, color: ColorCode) -> () {
+        self.buffer.addr[y][x].write(ScreenChar {
+            ascii_character: c as u8,
+            color_code: color
+        });
+    }
+}
+
+impl Default for VgaDisplay {
+    fn default() -> VgaDisplay {
         let mut _row = 0;
         let mut _col = 0;
 
@@ -74,31 +94,14 @@ impl VgaDisplay {
         }
         return res;
     }
-    fn backspace(&mut self) -> () {
-        if self.row == 0 && self.col == 0 {
-            return;
-        }
-        if self.col == 0 {
-            self.row-=1;
-            self.col=VGA_WIDTH;
-        }
-        self.col-=1;
-        self.write_char(' ');
-        self.col-=1;
-    }
-    fn putchar(&mut self, x: usize, y: usize, c: char, color: ColorCode) -> () {
-        self.buffer.addr[y][x].write(ScreenChar {
-            ascii_character: c as u8,
-            color_code: color
-        });
-    }
+
 }
 
 impl Write for VgaDisplay {
 
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for c in s.chars() { 
-            self.write_char(c);
+            self.write_char(c).unwrap();
         }
         Ok(())
     }

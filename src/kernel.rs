@@ -4,15 +4,20 @@
 #![no_main]
 
 mod io;
+mod memory;
+mod config;
+mod status;
 extern crate lazy_static;
 extern crate spin;
+extern crate alloc;
 use crate::io::vga::VgaDisplay;
 use core::panic::PanicInfo;
+use alloc::boxed::Box;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
 lazy_static! {
-    static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::new());
+    static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::default());
 }
 
 #[panic_handler]
@@ -28,8 +33,12 @@ fn panic(panic_info: &PanicInfo) -> ! {
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
 
-    println!("I'm using the print macro rn!{}", "test");
+    println!("This is currently using the rust println! macro. {}", "Hello World");
 
+    let tmp = Box::new(42);
+    println!("This is on the heap: {}", tmp);
+    
     unimplemented!();
+
     loop { }
 }
