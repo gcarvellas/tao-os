@@ -13,8 +13,8 @@ Or alternatively, you can use Docker
 
 ### Steps
 
-1. Run `docker build -t tao-os-builder`. You only need to run this once.
-2. Run `make dclean`
+1. Run `docker build --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$GID --build-arg PW=docker -t tao-os-builder .`. You only need to run this once.
+2. Run `make clean`
 3. Run `make docker` 
 
 ## Running with QEMU
@@ -28,6 +28,7 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
 ## TODO:
 
+### Core Features
 - GDT/IDT
 - TSS
 - Paging
@@ -35,9 +36,12 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 - Keyboard driver
 - Processes/Tasks (User Programs)
 
+### Cleanup/Improvements
 - Improve the paging allocation with the macro in boot.asm. Current way is very hacky.
 - Replace First Fit with Slab Allocation algorithm
-- The docker builder makes the build files as root. Make it the current user
+
+### Minor Cleanup/Improvements
+
 - Replace makefile with cargo.toml
 - Have production build steps as well as debug
 - Update the volatile crate (Replaces Volatile with VolatilePtr)

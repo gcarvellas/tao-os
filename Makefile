@@ -33,10 +33,7 @@ $(RUST_KERNEL_OBJ):
 
 docker:
 	docker run -t -v .:/mnt tao-os-builder bash -c 'cd /mnt && make all'
-
-dclean:
-	docker run -t -v .:/mnt tao-os-builder bash -c 'cd /mnt && make clean'
-
+ 
 clean:
 	rm -rf build
 	cargo clean
