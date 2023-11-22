@@ -8,9 +8,11 @@ mod io;
 mod memory;
 mod config;
 mod status;
+mod idt;
 extern crate lazy_static;
 extern crate spin;
 extern crate alloc;
+use crate::idt::idt::Idt;
 use crate::io::vga::VgaDisplay;
 use core::panic::PanicInfo;
 use alloc::boxed::Box;
@@ -52,6 +54,8 @@ fn test_malloc() -> () {
 
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
+
+    Idt::default();
 
     println!("This is currently using the rust println! macro. {}", "Hello World");
    
