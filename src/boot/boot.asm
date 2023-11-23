@@ -31,7 +31,8 @@ LONG_MODE     equ 1 << 5
 _start:
 
 .setup_stack_pointer:
-    mov esp, stack_top
+    mov ebp, 0x00200000 ; base pointer
+    mov esp, ebp ; stack pointer
 
 .setup_paging:
     ; Disable paging
@@ -95,9 +96,6 @@ p3_table:
     resb 4096
 p2_table:
     resb 4096
-stack_bottom:
-	resb 4096
-stack_top:
 
 section .rodata
 GDT:
