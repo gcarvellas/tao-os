@@ -37,7 +37,6 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 - Processes/Tasks (User Programs)
 
 ### Cleanup/Improvements
-- Improve the paging allocation with the macro in boot.asm. Current way is very hacky.
 - Replace First Fit with Slab Allocation algorithm
 
 ### Minor Cleanup/Improvements

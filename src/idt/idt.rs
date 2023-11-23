@@ -1,33 +1,27 @@
 //https://wiki.osdev.org/Interrupts
 
-use core::{mem::size_of_val, convert::TryInto};
+use core::{mem::size_of, convert::TryInto};
 use crate::{config::TOTAL_INTERRUPTS, io::outb};
 use println;
 
 extern {
-    static mut interrupt_pointer_table: [*mut u8; TOTAL_INTERRUPTS];
     fn idt_load(ptr: *const IdtrDesc);
     fn no_interrupt();
+    fn int20h();
 }
 
 #[no_mangle]
-pub fn no_interrupt_handler() -> () {
-    outb(0x20, 0x20);
-}
-
-fn idt_clock() -> () {
+fn int20h_handler() -> () {
     println!("Timing interrupt!");
     outb(0x20, 0x20);
 }
 
 #[no_mangle]
-pub fn interrupt_handler(interrupt: usize, frame: InterruptFrame) -> () {
-    unimplemented!(); // TODO    
+fn no_interrupt_handler() -> () {
     outb(0x20, 0x20);
 }
 
-#[repr(C)]
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Copy, Clone)]
 struct IdtDesc {
     offset_1: u16, // Offset bits 0-15
@@ -47,16 +41,16 @@ impl IdtDesc {
             offset_2: 0
         }
     }
-    fn set(&mut self, address: *mut u8) -> () {
+    fn set(&mut self, interrupt_function: unsafe extern "C" fn() -> ()) -> () {
         // Assumes selector, zero, and type_addr 
         // are set in IdtDesc::default()
+        let address = interrupt_function as *const (); 
         self.offset_1 = ((address as u32) & 0x0000ffff).try_into().unwrap();
         self.offset_2 = ((address as u32) >> 16).try_into().unwrap();
     }
 }
 
-#[repr(C)]
-#[repr(packed)]
+#[repr(C, packed)]
 struct IdtrDesc {
     limit: u16, // Size of descriptor table -1
     base: u32 // Base address of IDT
@@ -65,63 +59,35 @@ struct IdtrDesc {
 impl IdtrDesc {
     fn new(idt_descriptors: [IdtDesc; TOTAL_INTERRUPTS]) -> IdtrDesc {
         return IdtrDesc {
-            limit: size_of_val(&idt_descriptors).try_into().unwrap(),
+            limit:
+                {
+                    let size: u16 = size_of::<[IdtDesc; TOTAL_INTERRUPTS]>().try_into().unwrap();
+                    size - 1
+                },
             base: idt_descriptors.as_ptr() as u32
         };
     }
 }
 
-#[repr(C)]
-#[repr(packed)]
-struct InterruptFrame {
-    rdi: u64,
-    rsi: u64,
-    rbp: u64,
-    reserved: u64,
-    rbx: u64,
-    rdx: u64,
-    rcx: u64,
-    rax: u64,
-    ip: u64,
-    cs: u64,
-    rflags: u64,
-    rsp: u64,
-    ss: u64,
-    r8: u64,
-    r9: u64,
-    r10: u64,
-    r11: u64,
-    r12: u64,
-    r13: u64,
-    r14: u64,
-    r15: u64
-}
-
 pub struct Idt {
     idtr_desc: IdtrDesc,
     idt_descriptors: [IdtDesc; TOTAL_INTERRUPTS],
-    interrupt_callbacks: [fn() -> (); TOTAL_INTERRUPTS]
 }
 
 impl Idt {
     pub fn default() -> Idt {
-        let mut _idt_descriptors = [IdtDesc::default(); TOTAL_INTERRUPTS];
+        let mut _idt_descriptors: [IdtDesc; TOTAL_INTERRUPTS] = [IdtDesc::default(); TOTAL_INTERRUPTS];
         let _idtr_desc = IdtrDesc::new(_idt_descriptors);
 
-        // The standard ISA IRQs start at 20 since we 
-        // want to keep the intel CPU interrupts
-        let mut _interrupt_callbacks: [fn() -> (); TOTAL_INTERRUPTS] = [no_interrupt_handler; TOTAL_INTERRUPTS];
-
         for i in 0..TOTAL_INTERRUPTS {
-            _idt_descriptors[i].set(unsafe { interrupt_pointer_table[i] });
+            _idt_descriptors[i].set(no_interrupt);
         }
-        _interrupt_callbacks[0x20] = idt_clock;
-        unsafe { idt_load(&_idtr_desc) } ;
+        _idt_descriptors[0x20].set(int20h);
 
+        unsafe { idt_load(&_idtr_desc) } ;
         return Idt {
             idt_descriptors: _idt_descriptors,
             idtr_desc: _idtr_desc,
-            interrupt_callbacks: _interrupt_callbacks
         };
     }
 }

@@ -49,18 +49,11 @@ _start:
     mov cr3, eax
     
     ; Each entry is 2MiB
-    ; TODO improve this with a better macro
-    SETUP_P2_ENTRY p2_table, 0, 0x00_0000
-    SETUP_P2_ENTRY p2_table, 1, 0x20_0000
-    SETUP_P2_ENTRY p2_table, 2, 0x40_0000
-    SETUP_P2_ENTRY p2_table, 3, 0x60_0000
-    SETUP_P2_ENTRY p2_table, 4, 0x60_0000
-    SETUP_P2_ENTRY p2_table, 5, 0x80_0000
-    SETUP_P2_ENTRY p2_table, 6, 0x100_0000
-    SETUP_P2_ENTRY p2_table, 7, 0x120_0000
-    SETUP_P2_ENTRY p2_table, 8, 0x140_0000
-    SETUP_P2_ENTRY p2_table, 9, 0x160_0000
-    SETUP_P2_ENTRY p2_table, 10, 0x180_0000
+    %assign i 0
+    %rep 10 ;  Num of 2MiB pages
+        SETUP_P2_ENTRY p2_table, i, 0x20_0000 * i
+    %assign i i+1
+    %endrep
 
 	; Set the 0th entry of p3 to point to our p2 table
 	mov eax, p2_table ; load the address of the p2 table
