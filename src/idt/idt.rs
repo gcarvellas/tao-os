@@ -21,7 +21,7 @@ fn no_interrupt_handler() -> () {
     outb(0x20, 0x20);
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Copy, Clone)]
 struct IdtDesc {
     offset_1: u16, // Offset bits 0-15
@@ -49,10 +49,9 @@ impl IdtDesc {
         // Assumes selector, zero, and type_addr 
         // are set in IdtDesc::default()
         let address = interrupt_function as *const (); 
-        let bits = address as u64;
-        self.offset_1 = (bits & 0xFFFF).try_into().unwrap();
-        self.offset_2 = ((bits >> 16) & 0xFFFF).try_into().unwrap();
-        self.offset_3 = ((bits >> 32) & 0xFFFFFFFF).try_into().unwrap();
+        self.offset_1 = ((address as u32) & 0x0000ffff).try_into().unwrap();
+        self.offset_2 = ((address as u32) >> 16).try_into().unwrap();
+        self.offset_3 = ((address as u64) >> 32).try_into().unwrap();
     }
 }
 
@@ -89,11 +88,6 @@ impl Idt {
             _idt_descriptors[i].set(no_interrupt);
         }
         _idt_descriptors[0x20].set(int20h);
-        println!("{:?}",  int20h as *const ());
-        println!("{}", (int20h as *const ()) as u64);
-        println!("{}", _idt_descriptors[0x20].offset_1);
-        println!("{}", _idt_descriptors[0x20].offset_2);
-        println!("{}", _idt_descriptors[0x20].offset_3);
 
         unsafe { idt_load(&_idtr_desc) } ;
         return Idt {
