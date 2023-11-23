@@ -1,4 +1,4 @@
-//https://wiki.osdev.org/Interrupts
+// https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
 
 use core::{mem::size_of, convert::TryInto};
 use crate::{config::TOTAL_INTERRUPTS, io::outb};
@@ -21,32 +21,38 @@ fn no_interrupt_handler() -> () {
     outb(0x20, 0x20);
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone)]
 struct IdtDesc {
     offset_1: u16, // Offset bits 0-15
     selector: u16, // GDT selector
-    zero: u8, // Unused
-    type_attr: u8, // Descriptor type and attributes
-    offset_2: u16 // Offset bits 16-31
+    ist: u8, // bits 0..2 holds Interrupt Stack Table offset, rest of bits zero
+    type_attributes: u8, // gate type, dpl, and p fields
+    offset_2: u16, // offset bits 16-31
+    offset_3: u32, // offset bits 32-63
+    zero: u32, // Unused
 }
 
 impl IdtDesc {
     fn default() -> IdtDesc {
         return IdtDesc {
             offset_1: 0,
-            selector: 0x08,
-            zero: 0x00,
-            type_attr: 0xEE,
-            offset_2: 0
+            selector: 0x08, // GDT Code Segment Selector
+            ist: 0x00, // Do not use Interrupt Stack Table
+            type_attributes: 0x8E, // Interrupt Gate
+            offset_2: 0,
+            offset_3: 0,
+            zero: 0
         }
     }
     fn set(&mut self, interrupt_function: unsafe extern "C" fn() -> ()) -> () {
         // Assumes selector, zero, and type_addr 
         // are set in IdtDesc::default()
         let address = interrupt_function as *const (); 
-        self.offset_1 = ((address as u32) & 0x0000ffff).try_into().unwrap();
-        self.offset_2 = ((address as u32) >> 16).try_into().unwrap();
+        let bits = address as u64;
+        self.offset_1 = (bits & 0xFFFF).try_into().unwrap();
+        self.offset_2 = ((bits >> 16) & 0xFFFF).try_into().unwrap();
+        self.offset_3 = ((bits >> 32) & 0xFFFFFFFF).try_into().unwrap();
     }
 }
 
@@ -83,6 +89,11 @@ impl Idt {
             _idt_descriptors[i].set(no_interrupt);
         }
         _idt_descriptors[0x20].set(int20h);
+        println!("{:?}",  int20h as *const ());
+        println!("{}", (int20h as *const ()) as u64);
+        println!("{}", _idt_descriptors[0x20].offset_1);
+        println!("{}", _idt_descriptors[0x20].offset_2);
+        println!("{}", _idt_descriptors[0x20].offset_3);
 
         unsafe { idt_load(&_idtr_desc) } ;
         return Idt {

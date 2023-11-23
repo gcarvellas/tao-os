@@ -22,7 +22,7 @@ int20h:
     call int20h_handler
     popaq
     sti
-    iret
+    iretq
 
 no_interrupt:
     cli
@@ -30,4 +30,4 @@ no_interrupt:
     call no_interrupt_handler
     popaq
     sti
-    iret
+    iretq
