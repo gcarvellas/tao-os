@@ -25,22 +25,25 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
 - [x] Printing with VGA Text Mode
 - [x] Memory Allocation with First Fit Algorithm
+- [x] Interrupts
 
 ## TODO:
 
 ### Core Features
-- GDT/IDT
-- TSS
 - Paging
 - FAT16
 - Keyboard driver
+- Mouse driver
+- network driver
+- sound driver
+- graphics
 - Processes/Tasks (User Programs)
 
 ### Cleanup/Improvements
 - Replace First Fit with Slab Allocation algorithm
 
 ### Minor Cleanup/Improvements
-
+- Add more interrupts and improve the interrupt abstractions
 - Replace makefile with cargo.toml
 - Have production build steps as well as debug
 - Update the volatile crate (Replaces Volatile with VolatilePtr)
