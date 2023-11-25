@@ -1,11 +1,12 @@
 // https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
 
 use core::{mem::size_of, convert::TryInto};
-use crate::{config::TOTAL_INTERRUPTS, io::outb};
+use crate::{config::TOTAL_INTERRUPTS, io::isr::outb};
 use println;
+use core::arch::asm;
+use alloc::boxed::Box;
 
 extern {
-    fn idt_load(ptr: *const IdtrDesc);
     fn no_interrupt();
     fn int20h();
 }
@@ -19,6 +20,24 @@ fn int20h_handler() -> () {
 #[no_mangle]
 fn no_interrupt_handler() -> () {
     outb(0x20, 0x20);
+}
+
+#[inline(always)]
+pub fn enable_interrupts() -> () {
+    unsafe {
+        asm! {
+            "sti"
+        }
+    }
+}
+
+#[inline(always)]
+pub fn disable_interrupts() -> () {
+    unsafe {
+        asm! {
+            "cli"
+        }
+    }
 }
 
 #[repr(C, packed)]
@@ -48,48 +67,52 @@ impl IdtDesc {
     fn set(&mut self, interrupt_function: unsafe extern "C" fn() -> ()) -> () {
         // Assumes selector, zero, and type_addr 
         // are set in IdtDesc::default()
-        let address = interrupt_function as *const (); 
-        self.offset_1 = ((address as u32) & 0x0000ffff).try_into().unwrap();
-        self.offset_2 = ((address as u32) >> 16).try_into().unwrap();
-        self.offset_3 = ((address as u64) >> 32).try_into().unwrap();
+        let address = (interrupt_function as *const ()) as u64; 
+        self.offset_1 = address as u16;
+        self.offset_2 = (address >> 16) as u16;
+        self.offset_3 = (address >> 32) as u32;
     }
 }
 
 #[repr(C, packed)]
 struct IdtrDesc {
     limit: u16, // Size of descriptor table -1
-    base: u32 // Base address of IDT
+    base: u64 // Base address of IDT
 }
 
 impl IdtrDesc {
-    fn new(idt_descriptors: [IdtDesc; TOTAL_INTERRUPTS]) -> IdtrDesc {
+    fn new(idt_descriptors: *const IdtDesc) -> IdtrDesc {
         return IdtrDesc {
-            limit:
-                {
-                    let size: u16 = size_of::<[IdtDesc; TOTAL_INTERRUPTS]>().try_into().unwrap();
-                    size - 1
-                },
-            base: idt_descriptors.as_ptr() as u32
+            limit: (size_of::<[IdtDesc; TOTAL_INTERRUPTS]>() - 1) as u16,
+            base: idt_descriptors as u64,
         };
     }
 }
 
 pub struct Idt {
     idtr_desc: IdtrDesc,
-    idt_descriptors: [IdtDesc; TOTAL_INTERRUPTS],
+    idt_descriptors: Box<[IdtDesc; TOTAL_INTERRUPTS]>,
 }
 
 impl Idt {
     pub fn default() -> Idt {
-        let mut _idt_descriptors: [IdtDesc; TOTAL_INTERRUPTS] = [IdtDesc::default(); TOTAL_INTERRUPTS];
-        let _idtr_desc = IdtrDesc::new(_idt_descriptors);
+        let mut _idt_descriptors = Box::new([IdtDesc::default(); TOTAL_INTERRUPTS]);
+        let _idtr_desc = IdtrDesc::new(_idt_descriptors.as_ptr());
 
         for i in 0..TOTAL_INTERRUPTS {
             _idt_descriptors[i].set(no_interrupt);
         }
         _idt_descriptors[0x20].set(int20h);
 
-        unsafe { idt_load(&_idtr_desc) } ;
+        // Load IDT Descriptor
+        unsafe {
+            asm! {
+                "lidt [{0}]",
+                in(reg) &_idtr_desc
+            }
+        }
+        enable_interrupts();
+        loop{}
         return Idt {
             idt_descriptors: _idt_descriptors,
             idtr_desc: _idtr_desc,

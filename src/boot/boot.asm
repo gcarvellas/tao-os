@@ -31,8 +31,8 @@ LONG_MODE     equ 1 << 5
 _start:
 
 .setup_stack_pointer:
-    mov ebp, 0x00200000 ; base pointer
-    mov esp, ebp ; stack pointer
+    mov ebp, stack_begin
+    mov esp, stack_end
 
 .setup_paging:
     ; Disable paging
@@ -83,6 +83,22 @@ _start:
 section .text
 bits 64
 longstart:
+
+    ; Fast way to setup the a20 line
+    in al, 0x92
+    or al, 2
+    out 0x92, al
+
+    ; Remap the master PIC
+    mov al, 00010001b ; b4=1: Init, b3=0: Edge, b1=0: Cascade, b0=1: Need 4th init setup
+    out 0x20, al ; Tell master
+
+    mov al, 0x20 ; Master IRQ0 should be on INT 0x20 (JUst after intel exceptions)
+    out 0x21, al
+
+    mov al, 00000001b ; b4=0: FNM; b3-2=00: Master/Slave set by hardware; b1=0: Not AEOI; b0=1: x86 mode
+    out 0x21, al
+
 	call kernel_main
 
     hlt
@@ -96,6 +112,9 @@ p3_table:
     resb 4096
 p2_table:
     resb 4096
+stack_begin:
+	resb 4096 * 4 ; 16 KiB 
+stack_end:
 
 section .rodata
 GDT:

@@ -13,6 +13,7 @@ extern crate lazy_static;
 extern crate spin;
 extern crate alloc;
 use crate::idt::idt::Idt;
+use crate::idt::idt::enable_interrupts;
 use crate::io::vga::VgaDisplay;
 use core::panic::PanicInfo;
 use alloc::boxed::Box;
@@ -56,6 +57,7 @@ fn test_malloc() -> () {
 pub extern "C" fn kernel_main() -> ! {
 
     Idt::default();
+    enable_interrupts();
 
     println!("This is currently using the rust println! macro. {}", "Hello World");
    
