@@ -111,8 +111,6 @@ impl Idt {
                 in(reg) &_idtr_desc
             }
         }
-        enable_interrupts();
-        loop{}
         return Idt {
             idt_descriptors: _idt_descriptors,
             idtr_desc: _idtr_desc,
