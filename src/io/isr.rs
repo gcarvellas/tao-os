@@ -2,7 +2,7 @@ use core::arch::asm;
 
 #[inline(always)]
 pub fn insb(port: u16) -> u8 {
-    let mut value: u8 = 0;
+    let value: u8 = 0;
     unsafe {
         asm!(
             "in al, dx",
@@ -15,7 +15,7 @@ pub fn insb(port: u16) -> u8 {
 
 #[inline(always)]
 pub fn insw(port: u16) -> u16 {
-    let mut value: u16 = 0;
+    let value: u16 = 0;
     unsafe {
         asm!(
             "in ax, dx",

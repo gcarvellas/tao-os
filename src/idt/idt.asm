@@ -4,7 +4,7 @@ extern no_interrupt_handler
 global int20h
 global no_interrupt
 
-%include "./src/utils/macros.asm"
+%include "./src/arch/macros.asm"
 
 no_interrupt:
     cli

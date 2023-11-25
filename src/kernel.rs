@@ -13,6 +13,7 @@ extern crate lazy_static;
 extern crate spin;
 extern crate alloc;
 use crate::idt::idt::Idt;
+use crate::idt::idt::disable_interrupts;
 use crate::idt::idt::enable_interrupts;
 use crate::io::vga::VgaDisplay;
 use core::panic::PanicInfo;
@@ -22,10 +23,12 @@ use spin::Mutex;
 
 lazy_static! {
     static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::default());
+    static ref IDT: Idt = Idt::default();
 }
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
+    disable_interrupts();
     println!("Kernel Panic! :( \n");
     if let Some(args) = panic_info.message() {
         println!("Message: {}", args);
@@ -56,7 +59,7 @@ fn test_malloc() -> () {
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
 
-    Idt::default();
+    IDT.load();
     enable_interrupts();
 
     println!("This is currently using the rust println! macro. {}", "Hello World");

@@ -1,6 +1,6 @@
 // https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
 
-use core::{mem::size_of, convert::TryInto};
+use core::mem::size_of;
 use crate::{config::TOTAL_INTERRUPTS, io::isr::outb};
 use println;
 use core::arch::asm;
@@ -95,6 +95,14 @@ pub struct Idt {
 }
 
 impl Idt {
+    pub fn load(&self) -> () {
+        unsafe {
+            asm! {
+                "lidt [{0}]",
+                in(reg) &self.idtr_desc
+            }
+        }
+    }
     pub fn default() -> Idt {
         let mut _idt_descriptors = Box::new([IdtDesc::default(); TOTAL_INTERRUPTS]);
         let _idtr_desc = IdtrDesc::new(_idt_descriptors.as_ptr());
@@ -104,13 +112,6 @@ impl Idt {
         }
         _idt_descriptors[0x20].set(int20h);
 
-        // Load IDT Descriptor
-        unsafe {
-            asm! {
-                "lidt [{0}]",
-                in(reg) &_idtr_desc
-            }
-        }
         return Idt {
             idt_descriptors: _idt_descriptors,
             idtr_desc: _idtr_desc,

@@ -74,25 +74,26 @@ impl VgaDisplay {
             color_code: color
         });
     }
+    fn clear(&mut self) -> () {
+         for y in 0..VGA_HEIGHT {
+            for x in 0..VGA_WIDTH {
+                self.putchar(x, y, ' ', ColorCode::new(Color::White, Color::Black));
+            }
+        }
+    }
+
 }
 
 impl Default for VgaDisplay {
     fn default() -> VgaDisplay {
-        let mut _row = 0;
-        let mut _col = 0;
-
         let mut res = VgaDisplay {
             buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
-            row: _row,
-            col: _col
+            row: 0,
+            col: 0
         };
 
-        // Clears the screen
-        for y in 0..VGA_HEIGHT {
-            for x in 0..VGA_WIDTH {
-                res.putchar(x, y, ' ', ColorCode::new(Color::White, Color::Black));
-            }
-        }
+        res.clear();
+
         return res;
     }
 
