@@ -7,13 +7,17 @@ global no_interrupt
 %include "./src/utils/macros.asm"
 
 no_interrupt:
+    cli
     pushaq
     call no_interrupt_handler
     popaq
+    sti
     iretq
 
 int20h:
+    cli
     pushaq
     call int20h_handler
     popaq
+    sti
     iretq
