@@ -84,6 +84,13 @@ section .text
 bits 64
 longstart:
 
+    mov ax, 0x10 ; Data seg
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+
     ; Fast way to setup the a20 line
     in al, 0x92
     or al, 2
