@@ -10,12 +10,10 @@ no_interrupt:
     pushaq
     call no_interrupt_handler
     popaq
-    add rsp, 2*8
     iretq
 
 int20h:
     pushaq
     call int20h_handler
     popaq
-    add rsp, 2*8
     iretq
