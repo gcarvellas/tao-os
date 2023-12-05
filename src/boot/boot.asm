@@ -30,6 +30,8 @@ LONG_MODE     equ 1 << 5
 
 _start:
 
+; TODO check whether or not the CPU supports 64 bit and print an error
+
 .setup_stack_pointer:
     mov ebp, stack_begin
     mov esp, stack_end
@@ -84,6 +86,7 @@ section .text
 bits 64
 longstart:
 
+    ; Set the data segment
     mov ax, 0x10 ; Data seg
     mov ds, ax
     mov es, ax

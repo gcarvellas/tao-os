@@ -15,6 +15,10 @@ extern crate alloc;
 use crate::idt::idt::Idt;
 use crate::idt::idt::disable_interrupts;
 use crate::idt::idt::enable_interrupts;
+use crate::memory::paging::paging::PDE_ACCESS_FROM_ALL;
+use crate::memory::paging::paging::PDE_PRESENT;
+use crate::memory::paging::paging::PDE_WRITEABLE;
+use crate::memory::paging::paging::Paging256TBChunk;
 use crate::io::vga::VgaDisplay;
 use core::panic::PanicInfo;
 use alloc::boxed::Box;
@@ -56,6 +60,13 @@ fn test_malloc() -> () {
     println!("This is on the heap: {}.", tmp);
 }
 
+fn test_paging() -> () {
+    println!("Creating a new paging chunk");
+    let chunk = Paging256TBChunk::new(PDE_WRITEABLE | PDE_PRESENT | PDE_ACCESS_FROM_ALL);
+    chunk.switch(); // TODO at this point the main kernel page is lost
+    println!("Successfully switched to new temporary page");
+}
+
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
 
@@ -66,6 +77,8 @@ pub extern "C" fn kernel_main() -> ! {
    
     test_malloc();
     println!("Successfully deallocated memory.");
+
+    test_paging();
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
     unimplemented!();

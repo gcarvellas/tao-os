@@ -1,6 +1,6 @@
 # Tao OS
 
-A hobbyist 64-bit operating system written in Rust. The goal of this project is to learn about Operating Systems development. 
+A hobbyist 64-bit operating system written in Rust. The goal of this project is to learn about Operating Systems development and make a usable operating system. 
 
 ## Building Tao OS ISO file
 
@@ -41,6 +41,7 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
 ### Cleanup/Improvements
 - Replace First Fit with Slab Allocation algorithm
+- Clear the neverending backlog of TODO comments
 
 ### Minor Cleanup/Improvements
 - Add more interrupts and improve the interrupt abstractions
@@ -49,3 +50,5 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 - Update the volatile crate (Replaces Volatile with VolatilePtr)
 - Support colored printing
 - Replace lazy_static with once_cell
+- Error checking with cpuid
+- Make doesn't work natively on gentoo

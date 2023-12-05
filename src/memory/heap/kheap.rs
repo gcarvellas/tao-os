@@ -1,15 +1,12 @@
-use core::alloc::{Layout, GlobalAlloc};
-
-use crate::{config::{HEAP_SIZE_BYTES, HEAP_BLOCK_SIZE, HEAP_ADDRESS, HEAP_TABLE_ADDRESS}, status::ErrorCode};
-
-use core::sync::atomic::{AtomicPtr, Ordering};
-use super::heap::Heap;
-
 extern crate spin;
-use spin::Mutex;
 extern crate lazy_static;
-use lazy_static::lazy_static;
 extern crate volatile;
+use crate::{config::{HEAP_SIZE_BYTES, HEAP_BLOCK_SIZE, HEAP_ADDRESS, HEAP_TABLE_ADDRESS}, status::ErrorCode};
+use super::heap::Heap;
+use core::alloc::{Layout, GlobalAlloc};
+use core::sync::atomic::{AtomicPtr, Ordering};
+use spin::Mutex;
+use lazy_static::lazy_static;
 
 struct KernelHeap {
     heap: Heap
@@ -18,7 +15,6 @@ struct KernelHeap {
 impl KernelHeap {
     fn default() -> Result<KernelHeap, ErrorCode> {
         let total_table_entries = HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE;
-
         let end = AtomicPtr::new(unsafe { HEAP_ADDRESS.load(Ordering::Relaxed).add(HEAP_SIZE_BYTES) });
         let _heap = Heap::new(HEAP_ADDRESS, end, total_table_entries, HEAP_TABLE_ADDRESS).unwrap(); 
         return Ok(KernelHeap {
@@ -27,8 +23,11 @@ impl KernelHeap {
     }
 }
 
-// The kernel heap init is not a true static since it can fail. The workaround for this is to have
-// a separate static KernelAllocator that references the KERNEL_HEAP lazy static
+/**
+ * The KernelAllocator references the KERNEL_HEAP because the KERNEL_HEAP static can fail upon
+ * initialization. This is possible because KERNEL_HEAP is a lazy_static! but KernelAllocator is
+ * not.
+ */
 struct KernelAllocator;
 
 unsafe impl GlobalAlloc for KernelAllocator {

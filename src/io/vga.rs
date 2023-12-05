@@ -1,10 +1,12 @@
-use core::fmt::Write;
-
 extern crate volatile;
+use core::fmt::Write;
 use self::volatile::Volatile;
 
+/*
+ * Simple VGA Buffer implementation using the BIOS VGA Buffer 
+ */
 const VGA_WIDTH: usize = 80;
-const VGA_HEIGHT: usize = 20;
+const VGA_HEIGHT: usize = 25;
 
 #[repr(transparent)]
 struct Buffer {
@@ -65,7 +67,10 @@ impl VgaDisplay {
             self.col=VGA_WIDTH;
         }
         self.col-=1;
-        self.putchar(self.col, self.row, ' ', ColorCode::new(Color::White, Color::Black)); // TODO Support colors other than white
+
+        // TODO support multi color
+        self.putchar(self.col, self.row, ' ', ColorCode::new(Color::White, Color::Black));
+
         self.col-=1;
     }
     fn putchar(&mut self, x: usize, y: usize, c: char, color: ColorCode) -> () {
@@ -80,21 +85,24 @@ impl VgaDisplay {
                 self.putchar(x, y, ' ', ColorCode::new(Color::White, Color::Black));
             }
         }
+        self.row = 0;
+        self.col = 0;
     }
 
 }
 
 impl Default for VgaDisplay {
     fn default() -> VgaDisplay {
-        let mut res = VgaDisplay {
+        let mut display = VgaDisplay {
+            // TODO this will not work with monochrome monitors since their address is 0xB0000
+            // See https://wiki.osdev.org/Detecting_Colour_and_Monochrome_Monitors
             buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
             row: 0,
             col: 0
         };
+        display.clear();
 
-        res.clear();
-
-        return res;
+        return display;
     }
 
 }
@@ -112,6 +120,7 @@ impl Write for VgaDisplay {
         match c {
             '\x0A' => {
                 self.row+=1;
+                // TODO support scroll buffer
                 self.col=0;
                 Ok(())
             },
@@ -120,7 +129,9 @@ impl Write for VgaDisplay {
                 Ok(())
             },
             c => {
-                self.putchar(self.col, self.row, c, ColorCode::new(Color::White, Color::Black)); // TODO Support colors other than white
+                // TODO support multi color
+                self.putchar(self.col, self.row, c, ColorCode::new(Color::White, Color::Black));
+
                 self.col+=1;
                 if self.col >= VGA_WIDTH {
                     self.col = 0;

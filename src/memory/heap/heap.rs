@@ -1,26 +1,41 @@
 // Rewritten heap implementation from https://github.com/nibblebits/PeachOS/tree/master/src/memory/heap
 
+/**
+ * Simple Heap Implementation using First Fit Algorithm
+ */
+
 extern crate volatile;
-use self::volatile::Volatile;
 extern crate spin;
+use self::volatile::Volatile;
 use core::convert::TryInto;
+use core::sync::atomic::{AtomicPtr, Ordering};
 use crate::status::ErrorCode;
 use crate::config::{HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES};
-use core::sync::atomic::{AtomicPtr, Ordering};
+
+/**
+ * 8 Bit Entry Strucutre:
+ * 0-3: Entry Type (Taken/Free)
+ * 3-4: 0
+ * 4-5: 0
+ * 5-6: Is First
+ * 6-7: Has Next
+ */
+pub type HeapBlockTableEntry = u8;
 const HEAP_BLOCK_TABLE_ENTRY_TAKEN: u8 = 0x01;
 const HEAP_BLOCK_TABLE_ENTRY_FREE: u8 = 0x00;
-
-// Heap Table Entry Definition
 const HEAP_BLOCK_HAS_NEXT: u8 = 0b10000000;
 const HEAP_BLOCK_IS_FIRST: u8 = 0b01000000;
 
-pub type HeapBlockTableEntry = u8;
-
 #[repr(transparent)]
 struct HeapTable {
+    // Each heap entry is always a multiple of HEAP_BLOCK_SIZE to not worry about paging
     entries: [Volatile<HeapBlockTableEntry>; HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE]
 }
 
+/**
+ * AtomicPtr needs to be used because the Heap doesn't have the Send trait, which would prevent the
+ * Kernel Heap lazy_static! from working
+ */
 pub struct Heap {
     s_addr: AtomicPtr<u8>,
     table: &'static mut HeapTable
@@ -84,6 +99,9 @@ impl Heap {
         return (_address - _s_addr) / HEAP_BLOCK_SIZE;
     }
 
+    /**
+     * Finds the first block s.t the blocks after it can fit total_blocks
+     */
     fn get_start_block(&mut self, total_blocks: usize) -> Result<usize, ErrorCode> {
         let mut curr_block = 0;
         let mut start_block: isize = -1;
@@ -149,6 +167,7 @@ impl Heap {
         let total_blocks = aligned_size / HEAP_BLOCK_SIZE;
         return self.malloc_blocks(total_blocks);
     }
+
     pub fn free(&mut self, ptr: *mut u8) -> () {
         let block = self.address_to_block(ptr);
         self.mark_blocks_free(block);
