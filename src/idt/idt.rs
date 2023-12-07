@@ -13,7 +13,7 @@ extern {
 
 #[no_mangle]
 fn int20h_handler() -> () {
-    println!("Timing interrupt!");
+    //println!("Timing interrupt!");
     outb(0x20, 0x20);
 }
 

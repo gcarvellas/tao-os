@@ -24,12 +24,15 @@ use core::mem::size_of;
  *  62-63: Execute Disabled
  *  See 64-Bit Paging https://wiki.osdev.org/Paging
  */
+
 pub const PDE_PRESENT: usize = 1 << 0;
 pub const PDE_WRITEABLE: usize = 1 << 1;
 pub const PDE_ACCESS_FROM_ALL: usize = 1 << 2;
 pub const PDE_WRITE_THROUGH: usize = 1 << 3;
 pub const PDE_CACHE_DISABLED: usize = 1 << 4;
 pub const PDE_LARGE: usize = 1 << 7;
+
+pub const PDE_ADDRESS: usize = 0x3fffffffff000;
 
 /*
  * Each page table contains 512 8-byte entries
@@ -44,8 +47,9 @@ lazy_static! {
 }
 
 struct PagingIndexes {
-    directory: *mut usize,
-    table: *mut usize
+    plm4_index: usize,
+    plm3_index: usize,
+    plm2_index: usize
 }
 
 #[inline(always)]
@@ -59,13 +63,37 @@ fn paging_is_aligned(addr: *mut usize) -> bool {
 }
 
 fn paging_get_indexes(virtual_address: *mut usize) -> Result<PagingIndexes, ErrorCode> {
+    /**
+     * Formula to compute plm2_index, plm3_index, and plm4_index
+     * Let T=PAGING_TOTAL_ENTRIES_PER_TABLE, p2=plm2_index, p3=plm3_index, p4=plm4_index, SZ=PAGING_PAGE_SIZE
+     * then virtual_address = (p2 * T) + (p3 * T * SZ) + (p4 * T^2 * SZ) 
+     */
     if !paging_is_aligned(virtual_address) {
         return Err(ErrorCode::EINVARG);
     }
-    // TODO math is wrong since it assumes 32 bit paging
+    let mut _virtual_address = virtual_address as usize;
+
+    // plm4
+    let mut tmp = PAGING_TOTAL_ENTRIES_PER_TABLE * PAGING_TOTAL_ENTRIES_PER_TABLE * PAGING_PAGE_SIZE;
+    let plm4_index: usize = (_virtual_address) / tmp;
+    if _virtual_address > tmp {
+        _virtual_address-=tmp;
+    }
+
+    // plm3
+    tmp = PAGING_TOTAL_ENTRIES_PER_TABLE * PAGING_PAGE_SIZE; 
+    let plm3_index: usize = (_virtual_address) / tmp;
+    if _virtual_address > tmp {
+        _virtual_address-=tmp;
+    }
+
+    // plm2
+    let plm2_index: usize = _virtual_address / PAGING_TOTAL_ENTRIES_PER_TABLE;
+
     return Ok(PagingIndexes {
-        directory: ((virtual_address as usize) / PAGING_TOTAL_ENTRIES_PER_TABLE * PAGING_PAGE_SIZE) as *mut usize,
-        table: (((virtual_address as usize) / PAGING_TOTAL_ENTRIES_PER_TABLE * PAGING_PAGE_SIZE) / PAGING_PAGE_SIZE) as *mut usize
+        plm4_index,
+        plm3_index,
+        plm2_index
     });
 }
 
@@ -99,11 +127,12 @@ impl Paging256TBChunk {
         let mut plm4_table = new_page_table(); 
         let mut offset = 0;
 
-        for i in 0..plm4_table.len() {
+        // TODO this is slow
+        for i in 0..PAGING_TOTAL_ENTRIES_PER_TABLE {
             let mut plm3_table = new_page_table();
-            for j in 0..plm3_table.len() {
+            for j in 0..PAGING_TOTAL_ENTRIES_PER_TABLE {
                 let mut plm2_table = new_page_table();
-                for k in 0..plm2_table.len() {
+                for k in 0..PAGING_TOTAL_ENTRIES_PER_TABLE {
                     plm2_table[k] = (offset + (k * PAGING_PAGE_SIZE)) | flags | PDE_LARGE; 
                 }
                 offset += PAGING_TOTAL_ENTRIES_PER_TABLE * PAGING_PAGE_SIZE;
@@ -143,19 +172,16 @@ impl Paging256TBChunk {
     fn get(&self, virt: *mut usize) -> *mut usize {
         unimplemented!();
     }
-    fn set(&self, virt: *mut usize, val: usize) -> Result<(), ErrorCode> {
-        // TODO this assumes a 32bit paging setup. Doesn't work
+    pub fn set(&self, virt: *mut usize, val: usize) -> Result<(), ErrorCode> {
         if !paging_is_aligned(virt) {
             return Err(ErrorCode::EINVARG);
         }
         let indexes = paging_get_indexes(virt).unwrap();
+        let entry = self.directory_entry[indexes.plm4_index];
 
-        // TODO we have a reference to the actual array. Use that instead.
-        let entry = self.directory_entry[indexes.directory as usize];
-        let table_ptr = (entry & 0xfffff000) as *mut usize;
-        let table_index = indexes.table as usize;
+        let plm3_table_ptr = (entry & PDE_ADDRESS) as *mut usize;
         unsafe {
-            table_ptr.add(table_index).write(val);
+            plm3_table_ptr.add(indexes.plm3_index * indexes.plm2_index).write(val);
         }
         return Ok(());
     }

@@ -63,8 +63,27 @@ fn test_malloc() -> () {
 fn test_paging() -> () {
     println!("Creating a new paging chunk");
     let chunk = Paging256TBChunk::new(PDE_WRITEABLE | PDE_PRESENT | PDE_ACCESS_FROM_ALL);
-    chunk.switch(); // TODO at this point the main kernel page is lost
-    println!("Successfully switched to new temporary page");
+
+    let ptr = Box::new("No");
+    chunk.set(0x1000 as *mut usize, (ptr.as_ptr() as usize) | PDE_ACCESS_FROM_ALL | PDE_WRITEABLE | PDE_PRESENT);
+
+    // TODO once chunk.switch() is called, the main kernel page is lost
+    chunk.switch();
+    println!("After switch");
+
+    let ptr2 = 0x1000 as *mut char;
+    unsafe {
+        *ptr2 = 'A';
+        *(ptr2.offset(1)) = 'B';
+    }
+    let mut index = 0;
+    unsafe {
+        let c1 = core::ptr::read(ptr2);
+        let c2 = core::ptr::read(ptr2.add(1));
+        assert!(c1 == *ptr2);
+        assert!(c2 == *(ptr2.offset(1)));
+    }
+    println!("Paging works!");
 }
 
 #[no_mangle]
