@@ -127,7 +127,7 @@ impl Paging256TBChunk {
         let mut plm4_table = new_page_table(); 
         let mut offset = 0;
 
-        // TODO this is slow
+        // TODO this is slow. Only allocate what is needed instead of the entire table
         for i in 0..PAGING_TOTAL_ENTRIES_PER_TABLE {
             let mut plm3_table = new_page_table();
             for j in 0..PAGING_TOTAL_ENTRIES_PER_TABLE {
@@ -144,6 +144,7 @@ impl Paging256TBChunk {
     }
     pub fn switch(&self) -> () {
         unsafe {
+            // TODO this doesn't work
             asm! {
                 "mov cr3, {0}",
                 in(reg) &*self.directory_entry 
