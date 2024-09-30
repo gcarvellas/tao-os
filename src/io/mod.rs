@@ -1,8 +1,9 @@
 pub mod vga;
 pub mod isr;
 
-use SCREEN;
 use core::fmt::Arguments;
+
+use crate::SCREEN;
 
 #[macro_export]
 macro_rules! print {

@@ -1,6 +1,3 @@
-// Required for panic handler
-#![feature(panic_info_message)]
-
 #![no_std]
 #![no_main]
 
@@ -12,33 +9,34 @@ mod idt;
 extern crate lazy_static;
 extern crate spin;
 extern crate alloc;
+extern crate bilge;
+extern crate volatile;
 use crate::idt::idt::Idt;
 use crate::idt::idt::disable_interrupts;
 use crate::idt::idt::enable_interrupts;
-use crate::memory::paging::paging::PDE_ACCESS_FROM_ALL;
-use crate::memory::paging::paging::PDE_PRESENT;
-use crate::memory::paging::paging::PDE_WRITEABLE;
-use crate::memory::paging::paging::Paging256TBChunk;
+use crate::memory::paging::paging::PageAddress;
 use crate::io::vga::VgaDisplay;
+use crate::memory::paging::paging::PageDirectoryEntry;
+use crate::memory::paging::paging::Paging256TBChunk;
 use core::panic::PanicInfo;
 use alloc::boxed::Box;
 use lazy_static::lazy_static;
+use memory::heap::kheap::KernelHeap;
 use spin::Mutex;
 
 lazy_static! {
     static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::default());
     static ref IDT: Idt = Idt::default();
+    static ref KERNEL_HEAP: Mutex<KernelHeap> = Mutex::new(KernelHeap::default().unwrap());
+    static ref CURRENT_PAGE_DIRECTORY: Mutex<Option<Paging256TBChunk<'static>>> = Mutex::new(None);
 }
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
     disable_interrupts();
     println!("Kernel Panic! :( \n");
-    if let Some(args) = panic_info.message() {
-        println!("Message: {}", args);
-    } else {
-        println!("Message: Unknown");
-    }
+    let args = panic_info.message();
+    println!("Message: {}", args);
 
     if let Some(location) = panic_info.location() {
         println!("Location: Panic occurred in file '{}' at line {}", location.file(), location.line());
@@ -56,17 +54,31 @@ fn panic(panic_info: &PanicInfo) -> ! {
 }
 
 fn test_malloc() -> () {
-    let tmp = Box::new(42);
-    println!("This is on the heap: {}.", tmp);
+    {
+        let tmp = Box::new(42);
+        println!("This is on the heap: {}.", tmp);
+    }
 }
 
 fn test_paging() -> () {
     println!("Creating a new paging chunk");
-    let chunk = Paging256TBChunk::new(PDE_WRITEABLE | PDE_PRESENT | PDE_ACCESS_FROM_ALL);
+    let mut flags = PageDirectoryEntry::default();
+    flags.set_writeable(true);
+    flags.set_present(true);
+    flags.set_access_from_all(true);
+    let mut chunk = Paging256TBChunk::new().unwrap();
 
     let ptr = Box::new("No");
-    chunk.set(0x1000 as *mut usize, (ptr.as_ptr() as usize) | PDE_ACCESS_FROM_ALL | PDE_WRITEABLE | PDE_PRESENT);
+    for i in 0..51200 { // 512*512*4
+        let address = i * 0x1000;
+        if address == 0x1000 {
+            chunk.set(address as PageAddress, (ptr.as_ptr() as u64 | 0x7) as u64, flags).unwrap();
+        } else {
+            chunk.set(address as PageAddress, address, flags).unwrap();
+        }
+    }
 
+                                                             
     // TODO once chunk.switch() is called, the main kernel page is lost
     chunk.switch();
     println!("After switch");
@@ -76,7 +88,6 @@ fn test_paging() -> () {
         *ptr2 = 'A';
         *(ptr2.offset(1)) = 'B';
     }
-    let mut index = 0;
     unsafe {
         let c1 = core::ptr::read(ptr2);
         let c2 = core::ptr::read(ptr2.add(1));

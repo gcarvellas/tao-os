@@ -1,7 +1,7 @@
-// Rewritten heap implementation from https://github.com/nibblebits/PeachOS/tree/master/src/memory/heap
-
 /**
- * Simple Heap Implementation using First Fit Algorithm
+ * Heap Implementation using First Fit Algorithm
+ * References:
+ * https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
  */
 
 extern crate volatile;
@@ -11,6 +11,7 @@ use core::convert::TryInto;
 use core::sync::atomic::{AtomicPtr, Ordering};
 use crate::status::ErrorCode;
 use crate::config::{HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES};
+use core::ptr;
 
 /**
  * 8 Bit Entry Strucutre:
@@ -20,7 +21,7 @@ use crate::config::{HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES};
  * 5-6: Is First
  * 6-7: Has Next
  */
-pub type HeapBlockTableEntry = u8;
+pub type HeapBlockTableEntry = u8; // TODO replace this with a bilge bitmap
 const HEAP_BLOCK_TABLE_ENTRY_TAKEN: u8 = 0x01;
 const HEAP_BLOCK_TABLE_ENTRY_FREE: u8 = 0x00;
 const HEAP_BLOCK_HAS_NEXT: u8 = 0b10000000;
@@ -146,7 +147,7 @@ impl Heap {
     }
 
     fn malloc_blocks(&mut self, total_blocks: usize) -> Result<*mut u8, ErrorCode> {
-        let start_block = self.get_start_block(total_blocks).unwrap();
+        let start_block = self.get_start_block(total_blocks)?;
         let address = self.block_to_address(start_block);
         self.mark_blocks_taken(start_block, total_blocks);
         return Ok(address);
@@ -166,6 +167,17 @@ impl Heap {
         let aligned_size = heap_align_value_to_upper(size);
         let total_blocks = aligned_size / HEAP_BLOCK_SIZE;
         return self.malloc_blocks(total_blocks);
+    }
+
+    pub fn zalloc(&mut self, size: usize) -> Result<*mut u8, ErrorCode> {
+        let ptr = self.malloc(size)?;
+
+        unsafe {
+            ptr::write_bytes(ptr, 0, size);
+        }
+
+        Ok(ptr)
+
     }
 
     pub fn free(&mut self, ptr: *mut u8) -> () {

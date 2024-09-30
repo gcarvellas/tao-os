@@ -1,8 +1,11 @@
-// https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
+/*
+ * 64-bit IDT implementation
+ * References:
+ * https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
+ */
 
 use core::mem::size_of;
 use crate::{config::TOTAL_INTERRUPTS, io::isr::outb};
-use println;
 use core::arch::asm;
 use alloc::boxed::Box;
 
@@ -13,7 +16,6 @@ extern {
 
 #[no_mangle]
 fn int20h_handler() -> () {
-    //println!("Timing interrupt!");
     outb(0x20, 0x20);
 }
 
@@ -112,10 +114,12 @@ impl Idt {
         }
         _idt_descriptors[0x20].set(int20h);
 
-        return Idt {
+        let idt = Idt {
             idt_descriptors: _idt_descriptors,
             idtr_desc: _idtr_desc,
         };
+
+        idt
     }
 }
 

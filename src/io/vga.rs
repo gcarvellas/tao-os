@@ -1,10 +1,10 @@
-extern crate volatile;
-use core::fmt::Write;
-use self::volatile::Volatile;
-
 /*
  * Simple VGA Buffer implementation using the BIOS VGA Buffer 
  */
+
+use core::fmt::Write;
+use volatile::Volatile;
+
 const VGA_WIDTH: usize = 80;
 const VGA_HEIGHT: usize = 25;
 
@@ -111,7 +111,7 @@ impl Write for VgaDisplay {
 
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for c in s.chars() { 
-            self.write_char(c).unwrap();
+            self.write_char(c)?;
         }
         Ok(())
     }

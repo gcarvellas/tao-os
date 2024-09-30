@@ -1,22 +1,20 @@
 extern crate spin;
 extern crate lazy_static;
 extern crate volatile;
-use crate::{config::{HEAP_SIZE_BYTES, HEAP_BLOCK_SIZE, HEAP_ADDRESS, HEAP_TABLE_ADDRESS}, status::ErrorCode};
+use crate::{config::{HEAP_ADDRESS, HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES, HEAP_TABLE_ADDRESS}, status::ErrorCode, KERNEL_HEAP};
 use super::heap::Heap;
 use core::alloc::{Layout, GlobalAlloc};
 use core::sync::atomic::{AtomicPtr, Ordering};
-use spin::Mutex;
-use lazy_static::lazy_static;
 
-struct KernelHeap {
-    heap: Heap
+pub struct KernelHeap {
+    pub heap: Heap
 }
 
 impl KernelHeap {
-    fn default() -> Result<KernelHeap, ErrorCode> {
+    pub fn default() -> Result<KernelHeap, ErrorCode> {
         let total_table_entries = HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE;
         let end = AtomicPtr::new(unsafe { HEAP_ADDRESS.load(Ordering::Relaxed).add(HEAP_SIZE_BYTES) });
-        let _heap = Heap::new(HEAP_ADDRESS, end, total_table_entries, HEAP_TABLE_ADDRESS).unwrap(); 
+        let _heap = Heap::new(HEAP_ADDRESS, end, total_table_entries, HEAP_TABLE_ADDRESS)?; 
         return Ok(KernelHeap {
             heap: _heap,
         });
@@ -40,11 +38,5 @@ unsafe impl GlobalAlloc for KernelAllocator {
     }
 }
 
-lazy_static! {
-    static ref KERNEL_HEAP: Mutex<KernelHeap> = Mutex::new(KernelHeap::default().unwrap());
-}
-
 #[global_allocator]
 static KERNEL_ALLOCATOR: KernelAllocator = KernelAllocator;
-
-
