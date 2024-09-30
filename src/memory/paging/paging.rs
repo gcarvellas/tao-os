@@ -38,7 +38,6 @@ pub type PageAddress = *mut usize;
  *  52-58: Available
  *  59-62: Protection Key
  *  62-63: Execute Disabled
- *  See 64-Bit Paging https://wiki.osdev.org/Paging
  */
 #[repr(C)]
 #[bitsize(64)]
@@ -182,6 +181,7 @@ impl<'a> Paging256TBChunk<'a> {
 
         let mut pde = plm1.entries[idx.p_i].read();
 
+        pde = PageDirectoryEntry::from(pde.value | flags.value);
         pde.set_addr(u40::new(val >> 12));
         pde.set_present(true);
 
