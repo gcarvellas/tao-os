@@ -14,6 +14,7 @@ extern crate volatile;
 use crate::idt::idt::Idt;
 use crate::idt::idt::disable_interrupts;
 use crate::idt::idt::enable_interrupts;
+use crate::memory::heap::heap::KERNEL_HEAP;
 use crate::memory::paging::paging::PageAddress;
 use crate::io::vga::VgaDisplay;
 use crate::memory::paging::paging::PageDirectoryEntry;
@@ -21,13 +22,11 @@ use crate::memory::paging::paging::Paging256TBChunk;
 use core::panic::PanicInfo;
 use alloc::boxed::Box;
 use lazy_static::lazy_static;
-use memory::heap::kheap::KernelHeap;
 use spin::Mutex;
 
 lazy_static! {
     static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::default());
     static ref IDT: Idt = Idt::default();
-    static ref KERNEL_HEAP: Mutex<KernelHeap> = Mutex::new(KernelHeap::default().unwrap());
     static ref CURRENT_PAGE_DIRECTORY: Mutex<Option<Paging256TBChunk<'static>>> = Mutex::new(None);
 }
 
@@ -99,6 +98,8 @@ fn test_paging() -> () {
 
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
+
+    KERNEL_HEAP.init().unwrap();
 
     IDT.load();
     enable_interrupts();

@@ -6,11 +6,20 @@
 
 extern crate volatile;
 extern crate spin;
+use bilge::arbitrary_int::u5;
+use bilge::bitsize;
+use bilge::prelude::Number;
+use bilge::Bitsized;
+use bilge::FromBits;
+use core::convert::TryFrom;
+
 use self::volatile::Volatile;
+use core::alloc::{GlobalAlloc, Layout};
 use core::convert::TryInto;
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicPtr, Ordering}; // TODO is AtomicPtr necessary? If so, this needs to
+                                               // be added to the paging implementation
 use crate::status::ErrorCode;
-use crate::config::{HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES};
+use crate::config::{HEAP_ADDRESS, HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES, HEAP_TABLE_ADDRESS};
 use core::ptr;
 
 /**
@@ -21,11 +30,15 @@ use core::ptr;
  * 5-6: Is First
  * 6-7: Has Next
  */
-pub type HeapBlockTableEntry = u8; // TODO replace this with a bilge bitmap
-const HEAP_BLOCK_TABLE_ENTRY_TAKEN: u8 = 0x01;
-const HEAP_BLOCK_TABLE_ENTRY_FREE: u8 = 0x00;
-const HEAP_BLOCK_HAS_NEXT: u8 = 0b10000000;
-const HEAP_BLOCK_IS_FIRST: u8 = 0b01000000;
+#[repr(C)]
+#[bitsize(8)]
+#[derive(Clone, Copy, FromBits, Default)]
+pub struct HeapBlockTableEntry {
+    is_taken: bool,
+    has_next: bool,
+    is_first: bool,
+    zero: u5
+}
 
 #[repr(transparent)]
 struct HeapTable {
@@ -39,7 +52,7 @@ struct HeapTable {
  */
 pub struct Heap {
     s_addr: AtomicPtr<u8>,
-    table: &'static mut HeapTable
+    table_addr: AtomicPtr<u8>
 }
 
 fn heap_validate_alignment(ptr: &AtomicPtr<u8>) -> bool {
@@ -68,33 +81,46 @@ fn heap_align_value_to_upper(mut val: usize) -> usize {
     return val;
 }
 
-fn heap_get_entry_type(entry: &Volatile<HeapBlockTableEntry>) -> u8 {
-    // Gets first 4 bits of table entry, which determines the type
-    return entry.read() & 0x0f;
-}
-
 impl Heap {
-    pub fn new(start: AtomicPtr<u8>, end: AtomicPtr<u8>, total: usize, table_address: AtomicPtr<u8> ) -> Result<Heap, ErrorCode> {
-        if !heap_validate_alignment(&start) || !heap_validate_alignment(&end) {
-            return Err(ErrorCode::EINVARG)
-        }
-        heap_validate_total_blocks(&start, &end, total).ok();
-        let _table = unsafe { &mut *(table_address.load(Ordering::Relaxed) as *mut HeapTable) };
+    const fn new() -> Heap {
 
-        for entry in _table.entries.iter_mut() {
-            entry.write(HEAP_BLOCK_TABLE_ENTRY_FREE);
-        }
+        let heap = Heap {
+            s_addr: HEAP_ADDRESS,
+            table_addr: HEAP_TABLE_ADDRESS
+        };
 
-        return Ok(Heap { s_addr: start, table: _table })
+        heap
 
     }
 
-    fn block_to_address(&mut self, block: usize) -> *mut u8 {
+    pub fn init(&self) -> Result<(), ErrorCode> {
+
+        let start = HEAP_ADDRESS;
+        let end = AtomicPtr::new(unsafe { HEAP_ADDRESS.load(Ordering::Relaxed).add(HEAP_SIZE_BYTES) });
+
+        if !heap_validate_alignment(&start) || !heap_validate_alignment(&end) {
+            return Err(ErrorCode::EINVARG)
+        }
+        let total = HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE;
+        heap_validate_total_blocks(&start, &end, total)?;
+        
+        let table = self.get_table();
+
+        // Ensure all blocks are marked free
+        for entry in table.entries.iter_mut() {
+            let entry_to_write = HeapBlockTableEntry::default();
+            entry.write(entry_to_write);
+        }
+
+        Ok(())
+    }
+
+    fn block_to_address(&self, block: usize) -> *mut u8 {
         let _s_addr = self.s_addr.load(Ordering::Relaxed) as usize;
         return (_s_addr + (block * HEAP_BLOCK_SIZE)) as *mut u8;
     }
 
-    fn address_to_block(&mut self, address: *mut u8) -> usize {
+    fn address_to_block(&self, address: *mut u8) -> usize {
         let _s_addr = self.s_addr.load(Ordering::Relaxed) as usize;
         let _address = address as usize;
         return (_address - _s_addr) / HEAP_BLOCK_SIZE;
@@ -103,11 +129,12 @@ impl Heap {
     /**
      * Finds the first block s.t the blocks after it can fit total_blocks
      */
-    fn get_start_block(&mut self, total_blocks: usize) -> Result<usize, ErrorCode> {
+    fn get_start_block(&self, total_blocks: usize) -> Result<usize, ErrorCode> {
         let mut curr_block = 0;
         let mut start_block: isize = -1;
-        for i in 0..self.table.entries.len() {
-            if heap_get_entry_type(&self.table.entries[i]) != HEAP_BLOCK_TABLE_ENTRY_FREE {
+        let table = self.get_table();
+        for i in 0..table.entries.len() {
+            if table.entries[i].read().is_taken() {
                 curr_block = 0;
                 start_block = -1;
                 continue;
@@ -130,46 +157,58 @@ impl Heap {
         return Ok(start_block.try_into().unwrap());
     }
 
-    fn mark_blocks_taken(&mut self, start_block: usize, total_blocks: usize) -> () {
+    fn get_table(&self) -> &mut HeapTable {
+        unsafe { &mut *(self.table_addr.load(Ordering::Relaxed) as *mut HeapTable) }
+    }
+
+    fn mark_blocks_taken(&self, start_block: usize, total_blocks: usize) -> () {
         let end_block = (start_block + total_blocks) - 1;
 
-        let mut entry = HEAP_BLOCK_TABLE_ENTRY_TAKEN | HEAP_BLOCK_IS_FIRST;
+        let mut entry = HeapBlockTableEntry::default();
+        entry.set_is_taken(true);
+        entry.set_is_first(true);
         if total_blocks > 1 {
-            entry |= HEAP_BLOCK_HAS_NEXT;
+            entry.set_has_next(true);
         }
+
+        let table = self.get_table();
         for i in start_block..end_block+1 {
-            self.table.entries[i].write(entry);
-            entry = HEAP_BLOCK_TABLE_ENTRY_TAKEN;
+            table.entries[i].write(entry);
+            entry = HeapBlockTableEntry::default();
+            entry.set_is_taken(true);
             if end_block > 0 && i != end_block - 1 {
-                entry |= HEAP_BLOCK_HAS_NEXT;
+                entry.set_has_next(true);
             }
         }
     }
 
-    fn malloc_blocks(&mut self, total_blocks: usize) -> Result<*mut u8, ErrorCode> {
+    fn malloc_blocks(&self, total_blocks: usize) -> Result<*mut u8, ErrorCode> {
         let start_block = self.get_start_block(total_blocks)?;
         let address = self.block_to_address(start_block);
         self.mark_blocks_taken(start_block, total_blocks);
         return Ok(address);
     }
 
-    fn mark_blocks_free(&mut self, starting_block: usize) -> () {
-        for i in starting_block..self.table.entries.len() {
-            let entry = self.table.entries[i].clone();
-            self.table.entries[i].write(HEAP_BLOCK_TABLE_ENTRY_FREE);
-            if entry.read() & HEAP_BLOCK_HAS_NEXT == 0 {
+    fn mark_blocks_free(&self, starting_block: usize) -> () {
+        let table = self.get_table();
+        for i in starting_block..table.entries.len() {
+            let entry = table.entries[i].clone();
+            let mut entry_to_write = HeapBlockTableEntry::default();
+            entry_to_write.set_is_taken(false);
+            table.entries[i].write(entry_to_write);
+            if !entry.read().has_next() {
                 break;
             }
         }
     }
 
-    pub fn malloc(&mut self, size: usize) -> Result<*mut u8, ErrorCode> {
+    pub fn malloc(&self, size: usize) -> Result<*mut u8, ErrorCode> {
         let aligned_size = heap_align_value_to_upper(size);
         let total_blocks = aligned_size / HEAP_BLOCK_SIZE;
         return self.malloc_blocks(total_blocks);
     }
 
-    pub fn zalloc(&mut self, size: usize) -> Result<*mut u8, ErrorCode> {
+    pub fn zalloc(&self, size: usize) -> Result<*mut u8, ErrorCode> {
         let ptr = self.malloc(size)?;
 
         unsafe {
@@ -180,8 +219,24 @@ impl Heap {
 
     }
 
-    pub fn free(&mut self, ptr: *mut u8) -> () {
+    pub fn free(&self, ptr: *mut u8) -> () {
         let block = self.address_to_block(ptr);
         self.mark_blocks_free(block);
     }
 }
+
+/*
+ * Setup to use the heap as a global allocator
+ */
+unsafe impl GlobalAlloc for Heap {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        return self.malloc(layout.size()).unwrap();
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        return self.free(ptr);
+    }
+}
+
+#[global_allocator]
+pub static KERNEL_HEAP: Heap = Heap::new();
