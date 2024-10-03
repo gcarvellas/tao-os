@@ -41,7 +41,7 @@ pub type PageAddress = *mut usize;
  */
 #[repr(C)]
 #[bitsize(64)]
-#[derive(Clone, Copy, FromBits)]
+#[derive(Clone, Copy, FromBits, Default)]
 pub struct PageDirectoryEntry {
     pub present: bool,
     pub writeable: bool,
@@ -60,13 +60,9 @@ pub struct PageDirectoryEntry {
 
 impl PageDirectoryEntry {
 
-    pub fn allocate_new(flags: PageDirectoryEntry) -> Result<PageDirectoryEntry, ErrorCode> {
-        let addr = page_alloc(size_of::<PageDirectoryEntry>())?;
-        Ok(PageDirectoryEntry::from((addr as u64) | flags.value))
-    }
-
-    pub fn default() -> PageDirectoryEntry {
-        PageDirectoryEntry::from(0x00)
+    pub fn allocate_new(flags: Self) -> Result<Self, ErrorCode> {
+        let addr = page_alloc(size_of::<Self>())?;
+        Ok(Self::from((addr as u64) | flags.value))
     }
 
 }
@@ -80,33 +76,42 @@ struct PageTable<'a> {
 
 impl<'a> PageTable<'a> {
 
-    unsafe fn from(addr: PageAddress) -> PageTable<'a> {
+    fn from(addr: PageAddress) -> Self {
         let entries = unsafe { &mut *(addr as *mut PageDirectoryEntries) };
         PageTable {
             entries
         }
     }
 
-    unsafe fn from_pde(pde: PageDirectoryEntry) -> PageTable<'a> {
+    fn from_pde(pde: PageDirectoryEntry) -> Self {
         let addr = u64::from(pde.addr() << 12) as PageAddress; 
         PageTable::from(addr)
     }
 
-    fn new() -> Result<PageTable<'a>, ErrorCode> {
+    fn new() -> Result<Self, ErrorCode> {
         let addr = page_alloc(size_of::<PageDirectoryEntries>())?;
-        unsafe { Ok(PageTable::from(addr)) }
+        Ok(PageTable::from(addr))
     }
 
     fn get_pt(&mut self, idx: usize, flags: PageDirectoryEntry) -> Result<PageTable, ErrorCode> {
-        let mut pde = self.entries[idx].read();
+        let mut pde = self.entries
+            .get(idx)
+            .ok_or(ErrorCode::OutOfBounds)?
+            .read();
         if !pde.present() {
             let pt = PageTable::new()?;
             pde = PageDirectoryEntry::from(pde.value | flags.value);
             pde.set_addr(u40::new(pt.entries.as_ptr() as u64) >> 12);
             pde.set_present(true);
-            self.entries[idx].write(pde);
+            self.entries
+                .get_mut(idx)
+                .ok_or(ErrorCode::OutOfBounds)?
+                .write(pde);
         }
-        Ok(unsafe { PageTable::from_pde(self.entries[idx].read()) })
+        let entry = self.entries.get(idx)
+            .ok_or(ErrorCode::OutOfBounds)?
+            .read();
+        Ok(PageTable::from_pde(entry))
     }
 }
 
@@ -122,17 +127,17 @@ struct PageMapIndexes {
 }
 
 impl PageMapIndexes {
-    fn from(_v_addr: PageAddress) -> PageMapIndexes {
-        let mut v_addr = _v_addr as usize;
-        v_addr>>=12;
-        let p_i = v_addr & 0x1ff;
-        v_addr >>= 9;
-        let pt_i = v_addr & 0x1ff;
-        v_addr >>= 9;
-        let pd_i = v_addr & 0x1ff;
-        v_addr >>= 9;
-        let pdp_i = v_addr & 0x1ff;
-        PageMapIndexes {
+    fn from(v_addr: PageAddress) -> Self {
+        let mut v_addr_usize = v_addr as usize;
+        v_addr_usize>>=12;
+        let p_i = v_addr_usize & 0x1ff;
+        v_addr_usize >>= 9;
+        let pt_i = v_addr_usize & 0x1ff;
+        v_addr_usize >>= 9;
+        let pd_i = v_addr_usize & 0x1ff;
+        v_addr_usize>>= 9;
+        let pdp_i = v_addr_usize & 0x1ff;
+        Self {
             pdp_i,
             pd_i,
             pt_i,
@@ -150,7 +155,7 @@ fn page_alloc(size: usize) -> Result<PageAddress, ErrorCode> {
 
 #[inline(always)]
 fn paging_is_aligned(addr: PageAddress) -> bool {
-    return (addr as usize % PAGING_PAGE_SIZE) == 0;
+    (addr as usize % PAGING_PAGE_SIZE) == 0
 } 
 
 pub struct Paging256TBChunk<'a> {
@@ -159,7 +164,7 @@ pub struct Paging256TBChunk<'a> {
 
 impl<'a> Paging256TBChunk<'a> {
 
-    pub fn new() -> Result<Paging256TBChunk<'a>, ErrorCode> {
+    pub fn new() -> Result<Self, ErrorCode> {
         let plm4 = PageTable::new()?;  
 
         let res = Paging256TBChunk {
@@ -171,7 +176,7 @@ impl<'a> Paging256TBChunk<'a> {
 
     pub fn set(&mut self, virt: PageAddress, val: u64, flags: PageDirectoryEntry) -> Result<(), ErrorCode> {
         if !paging_is_aligned(virt) {
-            return Err(ErrorCode::EINVARG);
+            return Err(ErrorCode::InvArg);
         }
         let idx = PageMapIndexes::from(virt);
 
@@ -179,18 +184,22 @@ impl<'a> Paging256TBChunk<'a> {
         let mut plm2 = plm3.get_pt(idx.pd_i, flags)?; 
         let plm1 = plm2.get_pt(idx.pt_i, flags)?; 
 
-        let mut pde = plm1.entries[idx.p_i].read();
+        let mut pde = plm1.entries.get(idx.p_i)
+            .ok_or(ErrorCode::OutOfBounds)?
+            .read();
 
         pde = PageDirectoryEntry::from(pde.value | flags.value);
         pde.set_addr(u40::new(val >> 12));
         pde.set_present(true);
 
-        plm1.entries[idx.p_i].write(pde);
+        plm1.entries.get_mut(idx.p_i)
+            .ok_or(ErrorCode::OutOfBounds)?
+            .write(pde);
 
         Ok(())
     }
 
-    pub fn switch(&self) -> () {
+    pub fn switch(&self) {
         let addr = self.plm4.entries.as_ptr();
         unsafe {
             asm! {
@@ -203,9 +212,9 @@ impl<'a> Paging256TBChunk<'a> {
 
     pub fn map(&mut self, virt: PageAddress, phys: PageAddress, flags: PageDirectoryEntry) -> Result<(), ErrorCode>{
         if !paging_is_aligned(virt) || !paging_is_aligned(phys) {
-            return Err(ErrorCode::EINVARG);
+            return Err(ErrorCode::InvArg);
         }
-        return self.set(virt, phys as u64, flags);
+        self.set(virt, phys as u64, flags)
     }
 
     fn map_range(&self, virt: PageAddress, phys: PageAddress, count: usize, flags: PageDirectoryEntry) -> Result<(), ErrorCode>{

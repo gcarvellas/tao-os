@@ -10,7 +10,6 @@
 #![deny(clippy::doc_markdown)]
 #![deny(clippy::fallible_impl_from)]
 #![deny(clippy::indexing_slicing)]
-#![deny(clippy::integer_division)]
 #![deny(clippy::linkedlist)]
 #![deny(clippy::match_same_arms)]
 #![deny(clippy::maybe_infinite_iter)]
@@ -20,12 +19,11 @@
 #![deny(clippy::mutex_integer)]
 #![deny(clippy::needless_borrow)]
 #![deny(clippy::needless_continue)]
-#![deny(clippy::option_map_unwrap_or)]
+#![deny(clippy::map_unwrap_or)]
 #![deny(clippy::unwrap_in_result)]
 #![deny(clippy::unwrap_or_default)]
 #![deny(clippy::panicking_unwrap)]
 #![deny(clippy::range_plus_one)]
-#![deny(clippy::similar_names)]
 #![deny(clippy::single_match_else)]
 #![deny(clippy::string_add)]
 #![deny(clippy::string_add_assign)]
@@ -33,6 +31,10 @@
 #![deny(clippy::unseparated_literal_suffix)]
 #![deny(clippy::use_self)]
 #![deny(clippy::used_underscore_binding)]
+#![deny(clippy::needless_range_loop)]
+#![deny(clippy::declare_interior_mutable_const)]
+#![allow(clippy::declare_interior_mutable_const)] // Required for AtomicPtr
+#![allow(clippy::mut_from_ref)] // Requried for Heap get_table 
 
 mod io;
 mod memory;
@@ -58,8 +60,8 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 
 lazy_static! {
-    static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::default());
-    static ref IDT: Idt = Idt::default();
+    static ref SCREEN: Mutex<VgaDisplay> = Mutex::new(VgaDisplay::new().expect("Failed to initialize VGA"));
+    static ref IDT: Idt = Idt::new().expect("Failed to initialize IDT");
     static ref CURRENT_PAGE_DIRECTORY: Mutex<Option<Paging256TBChunk<'static>>> = Mutex::new(None);
 }
 
@@ -85,14 +87,14 @@ fn panic(panic_info: &PanicInfo) -> ! {
     loop {}
 }
 
-fn test_malloc() -> () {
+fn test_malloc() {
     {
         let tmp = Box::new(42);
         println!("This is on the heap: {}.", tmp);
     }
 }
 
-fn test_paging() -> () {
+fn test_paging() {
     println!("Creating a new paging chunk");
     let mut flags = PageDirectoryEntry::default();
     flags.set_writeable(true);
@@ -104,7 +106,7 @@ fn test_paging() -> () {
     for i in 0..51200 { // 512*512*4
         let address = i * 0x1000;
         if address == 0x1000 {
-            chunk.set(address as PageAddress, (ptr.as_ptr() as u64 | 0x7) as u64, flags).unwrap();
+            chunk.set(address as PageAddress, ptr.as_ptr() as u64 | 0x7, flags).unwrap();
         } else {
             chunk.set(address as PageAddress, address, flags).unwrap();
         }
@@ -145,7 +147,8 @@ pub extern "C" fn kernel_main() -> ! {
     test_paging();
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
+
     unimplemented!();
 
-    loop { }
+    //loop { }
 }
