@@ -6,6 +6,11 @@ on:
     branches:
       - '**' # This means the workflow will run on any branch
 
+permissions:
+  contents: read  # Allows read access to repository contents
+  issues: read     # Allows read access to issues
+  pull_requests: read  # Allows read access to pull requests
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,13 +35,16 @@ jobs:
     - name: Cargo Rustfmt
       run: cargo fmt --all --check
 
-    - name: Cargo Audit
+    - name: Audit Check
       uses: rustsec/audit-check@v1.4.1
       with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Cargo Clippy
-      run: cargo clippy
+    - name: Clippy Check
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
 
     - name: Build
       run: make clean && make all
