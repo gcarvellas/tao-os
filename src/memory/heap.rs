@@ -57,7 +57,7 @@ pub struct Heap {
 
 fn heap_validate_alignment(ptr: &AtomicPtr<u8>) -> bool {
     let _ptr: usize = ptr.load(Ordering::Relaxed) as usize;
-    return (_ptr % HEAP_BLOCK_SIZE) == 0;
+    (_ptr % HEAP_BLOCK_SIZE) == 0
 }
 
 fn heap_validate_total_blocks(start: &AtomicPtr<u8>, end: &AtomicPtr<u8>, total: usize) -> Result<(), ErrorCode> {
@@ -68,7 +68,7 @@ fn heap_validate_total_blocks(start: &AtomicPtr<u8>, end: &AtomicPtr<u8>, total:
     if total != total_blocks {
         return Err(ErrorCode::EINVARG)
     }
-    return Ok(())
+    Ok(())
 }
 
 fn heap_align_value_to_upper(mut val: usize) -> usize {

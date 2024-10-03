@@ -102,7 +102,7 @@ impl Default for VgaDisplay {
         };
         display.clear();
 
-        return display;
+        display
     }
 
 }

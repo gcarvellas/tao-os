@@ -1,5 +1,38 @@
 #![no_std]
 #![no_main]
+#![deny(clippy::cast_lossless)]
+#![deny(clippy::cast_possible_truncation)]
+#![deny(clippy::cast_precision_loss)]
+#![deny(clippy::cast_sign_loss)]
+#![deny(clippy::cast_possible_wrap)]
+#![deny(clippy::clone_on_ref_ptr)]
+#![deny(clippy::default_trait_access)]
+#![deny(clippy::doc_markdown)]
+#![deny(clippy::fallible_impl_from)]
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::integer_division)]
+#![deny(clippy::linkedlist)]
+#![deny(clippy::match_same_arms)]
+#![deny(clippy::maybe_infinite_iter)]
+#![deny(clippy::mem_forget)]
+#![deny(clippy::multiple_inherent_impl)]
+#![deny(clippy::mut_mut)]
+#![deny(clippy::mutex_integer)]
+#![deny(clippy::needless_borrow)]
+#![deny(clippy::needless_continue)]
+#![deny(clippy::option_map_unwrap_or)]
+#![deny(clippy::unwrap_in_result)]
+#![deny(clippy::unwrap_or_default)]
+#![deny(clippy::panicking_unwrap)]
+#![deny(clippy::range_plus_one)]
+#![deny(clippy::similar_names)]
+#![deny(clippy::single_match_else)]
+#![deny(clippy::string_add)]
+#![deny(clippy::string_add_assign)]
+#![deny(clippy::unnecessary_unwrap)]
+#![deny(clippy::unseparated_literal_suffix)]
+#![deny(clippy::use_self)]
+#![deny(clippy::used_underscore_binding)]
 
 mod io;
 mod memory;
@@ -14,7 +47,7 @@ extern crate volatile;
 use crate::idt::idt::Idt;
 use crate::idt::idt::disable_interrupts;
 use crate::idt::idt::enable_interrupts;
-use crate::memory::heap::heap::KERNEL_HEAP;
+use crate::memory::heap::KERNEL_HEAP;
 use crate::memory::paging::paging::PageAddress;
 use crate::io::vga::VgaDisplay;
 use crate::memory::paging::paging::PageDirectoryEntry;
