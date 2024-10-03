@@ -31,15 +31,12 @@ jobs:
       run: cargo +nightly fmt --all --check
 
     - name: Audit Check
-      uses: rustsec/audit-check@v1.4.1
+      uses: rustsec/audit-check@v1.3.2
       with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Clippy Check
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-features
+      run: cargo clippy --all-features
 
     - name: Build
       run: make clean && make all
