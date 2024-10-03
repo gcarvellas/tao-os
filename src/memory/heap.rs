@@ -1,11 +1,10 @@
+extern crate spin;
 /**
  * Heap Implementation using First Fit Algorithm
  * References:
  * <https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64>
  */
-
 extern crate volatile;
-extern crate spin;
 use bilge::arbitrary_int::u5;
 use bilge::bitsize;
 use bilge::prelude::Number;
@@ -18,8 +17,8 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::convert::TryInto;
 use core::sync::atomic::{AtomicPtr, Ordering}; // TODO is AtomicPtr necessary? If so, this needs to
                                                // be added to the paging implementation
-use crate::status::ErrorCode;
 use crate::config::{HEAP_ADDRESS, HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES, HEAP_TABLE_ADDRESS};
+use crate::status::ErrorCode;
 use core::ptr;
 
 /**
@@ -37,13 +36,13 @@ pub struct HeapBlockTableEntry {
     is_taken: bool,
     has_next: bool,
     is_first: bool,
-    zero: u5
+    zero: u5,
 }
 
 #[repr(transparent)]
 struct HeapTable {
     // Each heap entry is always a multiple of HEAP_BLOCK_SIZE to not worry about paging
-    entries: [Volatile<HeapBlockTableEntry>; HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE]
+    entries: [Volatile<HeapBlockTableEntry>; HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE],
 }
 
 /**
@@ -52,7 +51,7 @@ struct HeapTable {
  */
 pub struct Heap {
     s_addr: AtomicPtr<u8>,
-    table_addr: AtomicPtr<u8>
+    table_addr: AtomicPtr<u8>,
 }
 
 fn heap_validate_alignment(ptr: &AtomicPtr<u8>) -> bool {
@@ -60,13 +59,17 @@ fn heap_validate_alignment(ptr: &AtomicPtr<u8>) -> bool {
     (ptr % HEAP_BLOCK_SIZE) == 0
 }
 
-fn heap_validate_total_blocks(start: &AtomicPtr<u8>, end: &AtomicPtr<u8>, total: usize) -> Result<(), ErrorCode> {
+fn heap_validate_total_blocks(
+    start: &AtomicPtr<u8>,
+    end: &AtomicPtr<u8>,
+    total: usize,
+) -> Result<(), ErrorCode> {
     let start: usize = start.load(Ordering::Relaxed) as usize;
     let end: usize = end.load(Ordering::Relaxed) as usize;
     let table_size = end - start;
     let total_blocks = table_size / HEAP_BLOCK_SIZE;
     if total != total_blocks {
-        return Err(ErrorCode::InvArg)
+        return Err(ErrorCode::InvArg);
     }
     Ok(())
 }
@@ -76,34 +79,30 @@ fn heap_align_value_to_upper(mut val: usize) -> usize {
         return val;
     }
 
-    val = val - ( val % HEAP_BLOCK_SIZE);
+    val = val - (val % HEAP_BLOCK_SIZE);
     val += HEAP_BLOCK_SIZE;
     val
 }
 
 impl Heap {
     const fn new() -> Self {
-
-        
-
         Self {
             s_addr: HEAP_ADDRESS,
-            table_addr: HEAP_TABLE_ADDRESS
+            table_addr: HEAP_TABLE_ADDRESS,
         }
-
     }
 
     pub fn init(&self) -> Result<(), ErrorCode> {
-
         let start = HEAP_ADDRESS;
-        let end = AtomicPtr::new(unsafe { HEAP_ADDRESS.load(Ordering::Relaxed).add(HEAP_SIZE_BYTES) });
+        let end =
+            AtomicPtr::new(unsafe { HEAP_ADDRESS.load(Ordering::Relaxed).add(HEAP_SIZE_BYTES) });
 
         if !heap_validate_alignment(&start) || !heap_validate_alignment(&end) {
-            return Err(ErrorCode::InvArg)
+            return Err(ErrorCode::InvArg);
         }
         let total = HEAP_SIZE_BYTES / HEAP_BLOCK_SIZE;
         heap_validate_total_blocks(&start, &end, total)?;
-        
+
         let table = self.get_table();
 
         // Ensure all blocks are marked free
@@ -141,11 +140,10 @@ impl Heap {
             }
 
             if start_block == -1 {
-                start_block = idx.try_into()
-                    .map_err(|_| ErrorCode::OutOfBounds)?;
+                start_block = idx.try_into().map_err(|_| ErrorCode::OutOfBounds)?;
             }
 
-            curr_block+=1;
+            curr_block += 1;
 
             if curr_block == total_blocks {
                 break;
@@ -155,10 +153,7 @@ impl Heap {
         if start_block == -1 {
             return Err(ErrorCode::NoMem);
         }
-        let res: usize = 
-            start_block
-                .try_into()
-                .map_err(|_| ErrorCode::OutOfBounds)?;
+        let res: usize = start_block.try_into().map_err(|_| ErrorCode::OutOfBounds)?;
         Ok(res)
     }
 
@@ -178,7 +173,8 @@ impl Heap {
 
         let table = self.get_table();
         for i in start_block..=end_block {
-            table.entries
+            table
+                .entries
                 .get_mut(i)
                 .ok_or(ErrorCode::OutOfBounds)?
                 .write(entry);
@@ -225,10 +221,9 @@ impl Heap {
         }
 
         Ok(ptr)
-
     }
 
-    pub fn free(&self, ptr: *mut u8) -> Result<(), ErrorCode>{
+    pub fn free(&self, ptr: *mut u8) -> Result<(), ErrorCode> {
         let block = self.address_to_block(ptr);
         self.mark_blocks_free(block)?;
         Ok(())

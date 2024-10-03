@@ -10,25 +10,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: "Checkout GitHub Action"
-      uses: actions/checkout@v2
-
-    - name: "Set up Rust"
-      uses: actions/setup-rust@v1
-      with:
-        rust-version: 1.80.1
-        target: x86_64-unknown-none
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y nasm xorriso grub-pc-bin grub-common cargo-audit
 
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        profile: minimal
+        override: true
+        target: x86_64-unknown-none
+        components: rustfmt, clippy, audit
+
+    - name: Cargo Rustfmt
+      run: cargo +nightly fmt
+
     - name: Cargo Audit
       run: cargo audit
-
-    - name: Install Clippy
-      run: rustup component add clippy
 
     - name: Cargo Clippy
       run: cargo clippy
