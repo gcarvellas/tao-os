@@ -25,7 +25,7 @@ jobs:
         profile: minimal
         override: true
         target: x86_64-unknown-none
-        components: rustfmt, clippy, audit
+        components: rustfmt, clippy
 
     - name: Cargo Rustfmt
       run: cargo +nightly fmt
