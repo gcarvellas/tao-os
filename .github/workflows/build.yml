@@ -6,11 +6,6 @@ on:
     branches:
       - '**' # This means the workflow will run on any branch
 
-permissions:
-  contents: read  # Allows read access to repository contents
-  issues: read     # Allows read access to issues
-  pull_requests: read  # Allows read access to pull requests
-
 jobs:
   build:
     runs-on: ubuntu-latest
