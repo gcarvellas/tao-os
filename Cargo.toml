@@ -3,6 +3,9 @@ name = "tao-os"
 version = "0.0.1"
 authors = ["gcarvellas"]
 
+[build]
+target = "x86_64-unknown-none"
+
 [workspace]
 
 [dependencies]

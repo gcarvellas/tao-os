@@ -28,7 +28,7 @@ jobs:
         components: rustfmt, clippy
 
     - name: Cargo Rustfmt
-      run: cargo +nightly fmt
+      run: cargo +nightly fmt --all --check
 
     - name: Cargo Audit
       uses: rustsec/audit-check@v1.4.1
