@@ -1,5 +1,5 @@
 
-name: Audit, Lint, Build
+name: Check and Build
 
 on:
   push:
@@ -31,7 +31,9 @@ jobs:
       run: cargo +nightly fmt
 
     - name: Cargo Audit
-      run: cargo audit
+      uses: rustsec/audit-check@v1.4.1
+      with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Cargo Clippy
       run: cargo clippy
