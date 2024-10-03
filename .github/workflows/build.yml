@@ -21,7 +21,7 @@ jobs:
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: nightly
+        toolchain: nightly-2024-09-01
         profile: minimal
         override: true
         target: x86_64-unknown-none
