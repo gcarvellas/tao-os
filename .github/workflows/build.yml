@@ -21,10 +21,10 @@ jobs:
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
       with:
-        toolchain: nightly-2024-09-01-x86_64-unknown-none
+        toolchain: nightly-x86_64-unknown-linux-gnu
         profile: minimal
         override: true
-        target: nightly-x86_64-unknown-none
+        target: x86_64-unknown-none
         components: rustfmt, clippy
 
     - name: Cargo Rustfmt
