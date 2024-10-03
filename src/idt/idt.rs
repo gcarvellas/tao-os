@@ -4,28 +4,29 @@
  * https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
  */
 
-use core::mem::size_of;
-use crate::{config::TOTAL_INTERRUPTS, io::isr::outb};
-use core::arch::asm;
+use crate::{config::TOTAL_INTERRUPTS, io::isr::outb, status::ErrorCode};
 use alloc::boxed::Box;
+use core::arch::asm;
+use core::convert::TryFrom;
+use core::mem::size_of;
 
-extern {
+extern "C" {
     fn no_interrupt();
     fn int20h();
 }
 
 #[no_mangle]
-fn int20h_handler() -> () {
+fn int20h_handler() {
     outb(0x20, 0x20);
 }
 
 #[no_mangle]
-fn no_interrupt_handler() -> () {
+fn no_interrupt_handler() {
     outb(0x20, 0x20);
 }
 
 #[inline(always)]
-pub fn enable_interrupts() -> () {
+pub fn enable_interrupts() {
     unsafe {
         asm! {
             "sti"
@@ -34,7 +35,7 @@ pub fn enable_interrupts() -> () {
 }
 
 #[inline(always)]
-pub fn disable_interrupts() -> () {
+pub fn disable_interrupts() {
     unsafe {
         asm! {
             "cli"
@@ -45,49 +46,54 @@ pub fn disable_interrupts() -> () {
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 struct IdtDesc {
-    offset_1: u16, // Offset bits 0-15
-    selector: u16, // GDT selector
-    ist: u8, // bits 0..2 holds Interrupt Stack Table offset, rest of bits zero
+    offset_1: u16,       // Offset bits 0-15
+    selector: u16,       // GDT selector
+    ist: u8,             // bits 0..2 holds Interrupt Stack Table offset, rest of bits zero
     type_attributes: u8, // gate type, dpl, and p fields
-    offset_2: u16, // offset bits 16-31
-    offset_3: u32, // offset bits 32-63
-    zero: u32, // Unused
+    offset_2: u16,       // offset bits 16-31
+    offset_3: u32,       // offset bits 32-63
+    zero: u32,           // Unused
 }
 
 impl IdtDesc {
-    fn default() -> IdtDesc {
-        return IdtDesc {
+    fn default() -> Self {
+        Self {
             offset_1: 0,
-            selector: 0x08, // GDT Code Segment Selector
-            ist: 0x00, // Do not use Interrupt Stack Table
+            selector: 0x08,        // GDT Code Segment Selector
+            ist: 0x00,             // Do not use Interrupt Stack Table
             type_attributes: 0x8E, // Interrupt Gate
             offset_2: 0,
             offset_3: 0,
-            zero: 0
+            zero: 0,
         }
     }
-    fn set(&mut self, interrupt_function: unsafe extern "C" fn() -> ()) -> () {
-        // Assumes selector, zero, and type_addr 
+    fn set(&mut self, interrupt_function: unsafe extern "C" fn() -> ()) -> Result<(), ErrorCode> {
+        // Assumes selector, zero, and type_addr
         // are set in IdtDesc::default()
-        let address = (interrupt_function as *const ()) as u64; 
-        self.offset_1 = address as u16;
-        self.offset_2 = (address >> 16) as u16;
-        self.offset_3 = (address >> 32) as u32;
+        let address = (interrupt_function as *const ()) as u64;
+        self.offset_1 = u16::try_from(address & 0xFFFF).map_err(|_| ErrorCode::OutOfBounds)?;
+        self.offset_2 =
+            u16::try_from((address >> 16) & 0xFFFF).map_err(|_| ErrorCode::OutOfBounds)?;
+        self.offset_3 = u32::try_from(address >> 32).map_err(|_| ErrorCode::OutOfBounds)?;
+        Ok(())
     }
 }
 
 #[repr(C, packed)]
 struct IdtrDesc {
     limit: u16, // Size of descriptor table -1
-    base: u64 // Base address of IDT
+    base: u64,  // Base address of IDT
 }
 
 impl IdtrDesc {
-    fn new(idt_descriptors: *const IdtDesc) -> IdtrDesc {
-        return IdtrDesc {
-            limit: (size_of::<[IdtDesc; TOTAL_INTERRUPTS]>() - 1) as u16,
+    fn new(idt_descriptors: *const IdtDesc) -> Result<Self, ErrorCode> {
+        let limit = u16::try_from(size_of::<[IdtDesc; TOTAL_INTERRUPTS]>() - 1)
+            .map_err(|_| ErrorCode::OutOfBounds)?;
+
+        Ok(Self {
+            limit,
             base: idt_descriptors as u64,
-        };
+        })
     }
 }
 
@@ -97,7 +103,7 @@ pub struct Idt {
 }
 
 impl Idt {
-    pub fn load(&self) -> () {
+    pub fn load(&self) {
         unsafe {
             asm! {
                 "lidt [{0}]",
@@ -105,21 +111,22 @@ impl Idt {
             }
         }
     }
-    pub fn default() -> Idt {
-        let mut _idt_descriptors = Box::new([IdtDesc::default(); TOTAL_INTERRUPTS]);
-        let _idtr_desc = IdtrDesc::new(_idt_descriptors.as_ptr());
+    pub fn new() -> Result<Self, ErrorCode> {
+        let mut idt_descriptors = Box::new([IdtDesc::default(); TOTAL_INTERRUPTS]);
+        let idtr_desc = IdtrDesc::new(idt_descriptors.as_ptr())?;
 
-        for i in 0..TOTAL_INTERRUPTS {
-            _idt_descriptors[i].set(no_interrupt);
+        for descriptor in idt_descriptors.iter_mut() {
+            descriptor.set(no_interrupt)?;
         }
-        _idt_descriptors[0x20].set(int20h);
 
-        let idt = Idt {
-            idt_descriptors: _idt_descriptors,
-            idtr_desc: _idtr_desc,
-        };
+        idt_descriptors
+            .get_mut(0x20)
+            .ok_or(ErrorCode::OutOfBounds)?
+            .set(int20h)?;
 
-        idt
+        Ok(Self {
+            idt_descriptors,
+            idtr_desc,
+        })
     }
 }
-

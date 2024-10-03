@@ -9,14 +9,6 @@ A hobbyist 64-bit operating system written in Rust. The goal of this project is 
 - nasm
 - grub
 
-If for some reason this doesn't work, alternatively, you can use Docker
-
-### Steps
-
-1. Run `docker build --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$GID --build-arg PW=docker -t tao-os-builder .`. You only need to run this once.
-2. Run `make clean`
-3. Run `make docker` 
-
 ## Running with QEMU
 
 After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`

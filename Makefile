@@ -31,9 +31,6 @@ $(RUST_KERNEL_OBJ):
 	cargo $(RUST_FLAGS) build --target x86_64-unknown-none
 	cp target/x86_64-unknown-none/debug/libkernel.a $(BUILDDIR)/kernel.o
 
-docker:
-	docker run -t -v .:/mnt tao-os-builder bash -c 'cd /mnt && make all'
- 
 clean:
 	rm -rf build
 	cargo clean

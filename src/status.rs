@@ -1,5 +1,6 @@
 #[derive(Debug)]
 pub enum ErrorCode {
-    EINVARG,
-    ENOMEM
+    InvArg,
+    NoMem,
+    OutOfBounds,
 }

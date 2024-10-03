@@ -1,5 +1,5 @@
-pub mod vga;
 pub mod isr;
+pub mod vga;
 
 use core::fmt::Arguments;
 

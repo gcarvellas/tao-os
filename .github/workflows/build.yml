@@ -1,0 +1,42 @@
+
+name: Check and Build
+
+on:
+  push:
+    branches:
+      - '**' # This means the workflow will run on any branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y nasm xorriso grub-pc-bin grub-common mtools
+
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly-x86_64-unknown-linux-gnu
+        profile: minimal
+        override: true
+        target: x86_64-unknown-none
+        components: rustfmt, clippy
+
+    - name: Cargo Rustfmt
+      run: cargo +nightly fmt --all --check
+
+    - name: Audit Check
+      uses: rustsec/audit-check@v2.0.0
+      with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Clippy Check
+      run: cargo clippy --all-features
+
+    - name: Build
+      run: make all
