@@ -24,11 +24,11 @@ jobs:
         toolchain: nightly-2024-09-01
         profile: minimal
         override: true
-        target: x86_64-unknown-none
+        target: nightly-x86_64-unknown-none
         components: rustfmt, clippy
 
     - name: Cargo Rustfmt
-      run: cargo fmt --all --check
+      run: cargo +nightly fmt --all --check
 
     - name: Audit Check
       uses: rustsec/audit-check@v1.4.1
