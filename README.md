@@ -31,6 +31,8 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 - sound driver
 - graphics
 - Processes/Tasks (User Programs)
+- Async
+- Testing
 
 ### Cleanup/Improvements
 - Replace First Fit with Slab Allocation algorithm

@@ -139,6 +139,7 @@ impl PageMapIndexes {
 /*
  * Manually allocate memory to prevent Rust from freeing pages at random
  */
+#[inline(always)]
 fn page_alloc(size: usize) -> Result<PageAddress, ErrorCode> {
     Ok(KERNEL_HEAP.zalloc(size)? as PageAddress)
 }

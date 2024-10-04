@@ -33,10 +33,15 @@
 #![deny(clippy::used_underscore_binding)]
 #![deny(clippy::needless_range_loop)]
 #![deny(clippy::declare_interior_mutable_const)]
-#![allow(clippy::declare_interior_mutable_const)] // Required for AtomicPtr
+#![deny(clippy::nonminimal_bool)]
 #![allow(clippy::mut_from_ref)] // Requried for Heap get_table
 
+// Required for AtomicPtr
+#![warn(clippy::declare_interior_mutable_const)]
+#![warn(clippy::borrow_interior_mutable_const)]
+
 mod config;
+mod disk;
 mod idt;
 mod io;
 mod memory;
@@ -46,6 +51,7 @@ extern crate bilge;
 extern crate lazy_static;
 extern crate spin;
 extern crate volatile;
+use crate::disk::disk_read_sector;
 use crate::idt::idt::disable_interrupts;
 use crate::idt::idt::enable_interrupts;
 use crate::idt::idt::Idt;
@@ -138,6 +144,7 @@ fn test_paging() {
     println!("Paging works!");
 }
 
+// TODO use cargo's testing to do this https://os.phil-opp.com/testing/ 
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
     KERNEL_HEAP.init().unwrap();
@@ -154,6 +161,10 @@ pub extern "C" fn kernel_main() -> ! {
     println!("Successfully deallocated memory.");
 
     test_paging();
+
+    println!("Testing a disk read");
+
+    let _buf = disk_read_sector(0, 1);
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
 

@@ -54,6 +54,7 @@ pub struct Heap {
     table_addr: AtomicPtr<u8>,
 }
 
+#[inline(always)]
 fn heap_validate_alignment(ptr: &AtomicPtr<u8>) -> bool {
     let ptr: usize = ptr.load(Ordering::Relaxed) as usize;
     (ptr % HEAP_BLOCK_SIZE) == 0
@@ -140,7 +141,7 @@ impl Heap {
             }
 
             if start_block == -1 {
-                start_block = idx.try_into().map_err(|_| ErrorCode::OutOfBounds)?;
+                start_block = idx.try_into()?;
             }
 
             curr_block += 1;
@@ -153,10 +154,11 @@ impl Heap {
         if start_block == -1 {
             return Err(ErrorCode::NoMem);
         }
-        let res: usize = start_block.try_into().map_err(|_| ErrorCode::OutOfBounds)?;
+        let res: usize = start_block.try_into()?;
         Ok(res)
     }
 
+    #[inline(always)]
     fn get_table(&self) -> &mut HeapTable {
         unsafe { &mut *(self.table_addr.load(Ordering::Relaxed) as *mut HeapTable) }
     }
@@ -235,7 +237,8 @@ impl Heap {
  */
 unsafe impl GlobalAlloc for Heap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.malloc(layout.size()).unwrap()
+        self.malloc(layout.size())
+            .expect("Failed to allocate memory")
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {

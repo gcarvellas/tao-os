@@ -71,10 +71,9 @@ impl IdtDesc {
         // Assumes selector, zero, and type_addr
         // are set in IdtDesc::default()
         let address = (interrupt_function as *const ()) as u64;
-        self.offset_1 = u16::try_from(address & 0xFFFF).map_err(|_| ErrorCode::OutOfBounds)?;
-        self.offset_2 =
-            u16::try_from((address >> 16) & 0xFFFF).map_err(|_| ErrorCode::OutOfBounds)?;
-        self.offset_3 = u32::try_from(address >> 32).map_err(|_| ErrorCode::OutOfBounds)?;
+        self.offset_1 = u16::try_from(address & 0xFFFF)?;
+        self.offset_2 = u16::try_from((address >> 16) & 0xFFFF)?;
+        self.offset_3 = u32::try_from(address >> 32)?;
         Ok(())
     }
 }
@@ -87,8 +86,7 @@ struct IdtrDesc {
 
 impl IdtrDesc {
     fn new(idt_descriptors: *const IdtDesc) -> Result<Self, ErrorCode> {
-        let limit = u16::try_from(size_of::<[IdtDesc; TOTAL_INTERRUPTS]>() - 1)
-            .map_err(|_| ErrorCode::OutOfBounds)?;
+        let limit = u16::try_from(size_of::<[IdtDesc; TOTAL_INTERRUPTS]>() - 1)?;
 
         Ok(Self {
             limit,
@@ -99,7 +97,7 @@ impl IdtrDesc {
 
 pub struct Idt {
     idtr_desc: IdtrDesc,
-    idt_descriptors: Box<[IdtDesc; TOTAL_INTERRUPTS]>,
+    _idt_descriptors: Box<[IdtDesc; TOTAL_INTERRUPTS]>,
 }
 
 impl Idt {
@@ -125,7 +123,7 @@ impl Idt {
             .set(int20h)?;
 
         Ok(Self {
-            idt_descriptors,
+            _idt_descriptors: idt_descriptors,
             idtr_desc,
         })
     }
