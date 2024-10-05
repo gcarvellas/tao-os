@@ -5,6 +5,7 @@ pub enum ErrorCode {
     InvArg,
     NoMem,
     OutOfBounds,
+    Io,
 }
 
 impl From<TryFromIntError> for ErrorCode {

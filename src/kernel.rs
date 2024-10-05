@@ -51,10 +51,10 @@ extern crate bilge;
 extern crate lazy_static;
 extern crate spin;
 extern crate volatile;
-use crate::disk::disk_read_sector;
-use crate::idt::idt::disable_interrupts;
-use crate::idt::idt::enable_interrupts;
-use crate::idt::idt::Idt;
+use crate::disk::ata_pio_read28;
+use crate::idt::disable_interrupts;
+use crate::idt::enable_interrupts;
+use crate::idt::Idt;
 use crate::io::vga::VgaDisplay;
 use crate::memory::heap::KERNEL_HEAP;
 use crate::memory::paging::paging::PageAddress;
@@ -144,7 +144,7 @@ fn test_paging() {
     println!("Paging works!");
 }
 
-// TODO use cargo's testing to do this https://os.phil-opp.com/testing/ 
+// TODO use cargo's testing to do this https://os.phil-opp.com/testing/
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
     KERNEL_HEAP.init().unwrap();
@@ -164,7 +164,7 @@ pub extern "C" fn kernel_main() -> ! {
 
     println!("Testing a disk read");
 
-    let _buf = disk_read_sector(0, 1);
+    let _buf = ata_pio_read28(0, 1);
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
 
