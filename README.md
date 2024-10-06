@@ -23,20 +23,24 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 ## TODO:
 
 ### Core Features
-- Paging improvements
 - FAT16
 - Keyboard driver
+- Async
+- Processes/Multitasking
+- Elf loader/User Programs
+- Testing
 - Mouse driver
 - network driver
 - sound driver
 - graphics
 - Processes/Tasks (User Programs)
-- Async
-- Testing
+- DMA driver
+- RamFS
 
 ### Cleanup/Improvements
 - Replace First Fit with Slab Allocation algorithm
 - Clear the neverending backlog of TODO comments
+- Paging improvements
 
 ### Minor Cleanup/Improvements
 - Pay attention to which orderings I'm using for address loadings

@@ -6,6 +6,7 @@ pub enum ErrorCode {
     NoMem,
     OutOfBounds,
     Io,
+    BadPath,
 }
 
 impl From<TryFromIntError> for ErrorCode {

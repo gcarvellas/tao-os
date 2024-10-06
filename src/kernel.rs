@@ -42,6 +42,7 @@
 
 mod config;
 mod disk;
+mod fs;
 mod idt;
 mod io;
 mod memory;
@@ -52,6 +53,8 @@ extern crate lazy_static;
 extern crate spin;
 extern crate volatile;
 use crate::disk::ata_pio_read28;
+use crate::fs::pparser::parse_path;
+use crate::fs::pparser::PathRoot;
 use crate::idt::disable_interrupts;
 use crate::idt::enable_interrupts;
 use crate::idt::Idt;
@@ -61,6 +64,7 @@ use crate::memory::paging::paging::PageAddress;
 use crate::memory::paging::paging::PageDirectoryEntry;
 use crate::memory::paging::paging::Paging256TBChunk;
 use alloc::boxed::Box;
+use alloc::string::String;
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -161,6 +165,10 @@ pub extern "C" fn kernel_main() -> ! {
     println!("Successfully deallocated memory.");
 
     test_paging();
+
+    println!("testing a path parse");
+
+    let _root_path = parse_path(String::from("0:/bin/shell.exe"));
 
     println!("Testing a disk read");
 

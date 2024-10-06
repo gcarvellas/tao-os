@@ -35,6 +35,7 @@ struct AtaPioStatusRegister {
     bsy: bool,
 }
 
+// TODO support async through IRQ
 pub fn ata_pio_read28(lba: usize, total: usize) -> Result<Vec<u16>, ErrorCode> {
     // Select master drive and pass part of the LBA
     let lba_h = ((lba >> 24) & 0x0F) | 0xE0;
