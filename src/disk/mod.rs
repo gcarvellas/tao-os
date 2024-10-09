@@ -21,6 +21,7 @@ const ATA_PRIMARY_LBA_MID: u16 = 0x1F4;
 const ATA_PRIMARY_LBA_HI: u16 = 0x1F5;
 const ATA_PRIMARY_DRIVE_HEAD: u16 = 0x1F6;
 const ATA_PRIMARY_COMM_REGSTAT: u16 = 0x1F7;
+const SECTOR_SIZE: usize = 256;
 
 #[bitsize(8)]
 #[derive(Clone, Copy, FromBits)]
@@ -54,7 +55,7 @@ pub fn ata_pio_read28(lba: usize, total: usize) -> Result<Vec<u16>, ErrorCode> {
     // Read command
     outb(ATA_PRIMARY_COMM_REGSTAT, 0x20);
 
-    let mut res: Vec<u16> = Vec::with_capacity(total);
+    let mut res: Vec<u16> = Vec::with_capacity(total*SECTOR_SIZE);
 
     for _ in 0..total {
         // Wait until buffer is ready
@@ -79,7 +80,7 @@ pub fn ata_pio_read28(lba: usize, total: usize) -> Result<Vec<u16>, ErrorCode> {
         }
 
         // Copy from hard disk to memory two bytes at a time
-        for _ in 0..256 {
+        for _ in 0..SECTOR_SIZE {
             res.push(insw(ATA_PRIMARY_DATA));
         }
     }

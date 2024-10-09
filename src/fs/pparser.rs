@@ -1,10 +1,8 @@
-use core::{cell::RefCell, str::Chars};
+use core::str::Chars;
 
 use crate::status::ErrorCode;
-use alloc::{rc::Rc, string::String};
+use alloc::{string::String, vec::Vec};
 use config::MAX_PATH;
-
-type PathPart = Rc<RefCell<PathPartInner>>;
 
 fn get_drive_by_path(chars: &mut Chars) -> Result<u32, ErrorCode> {
     let drive_no = chars
@@ -25,12 +23,16 @@ fn get_path_part(path: &mut Chars) -> Option<String> {
 
     loop {
         let c = match path.next() {
-            None => return None,
+            None => {
+                if res.is_empty() {
+                    return None;
+                }
+                return Some(res);
+            },
             Some(c) => c,
         };
 
         if c == '/' {
-            path.next();
             return Some(res);
         }
 
@@ -42,29 +44,9 @@ fn get_path_part(path: &mut Chars) -> Option<String> {
     }
 }
 
-fn parse_path_part(mut last_part: Option<PathPart>, chars: &mut Chars) -> Option<PathPart> {
-    let path_part = get_path_part(chars)?;
-
-    let part = Rc::new(RefCell::new(PathPartInner {
-        part: path_part,
-        next: None,
-    }));
-
-    if let Some(ref mut last_part) = last_part {
-        last_part.borrow_mut().next = Some(Rc::clone(&part));
-    }
-
-    Some(part)
-}
-
 pub struct PathRoot {
     drive_no: u32,
-    first: PathPart,
-}
-
-struct PathPartInner {
-    part: String,
-    next: Option<PathPart>,
+    parts: Vec<String>
 }
 
 pub fn parse_path(path: String) -> Result<PathRoot, ErrorCode> {
@@ -76,20 +58,13 @@ pub fn parse_path(path: String) -> Result<PathRoot, ErrorCode> {
 
     let drive_no = get_drive_by_path(&mut tmp_path)?;
 
-    let first_part = parse_path_part(None, &mut tmp_path).ok_or(ErrorCode::BadPath)?;
-
-    let path_root = PathRoot {
+    let mut path_root = PathRoot {
         drive_no,
-        first: Rc::clone(&first_part),
+        parts: Vec::new()
     };
 
-    let mut part = match parse_path_part(Some(first_part), &mut tmp_path) {
-        None => return Ok(path_root),
-        Some(val) => val,
-    };
-
-    while let Some(val) = parse_path_part(Some(part), &mut tmp_path) {
-        part = val;
+    while let Some(val) = get_path_part(&mut tmp_path) {
+        path_root.parts.push(val);
     }
 
     Ok(path_root)
