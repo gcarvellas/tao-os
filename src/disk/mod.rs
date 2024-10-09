@@ -55,7 +55,7 @@ pub fn ata_pio_read28(lba: usize, total: usize) -> Result<Vec<u16>, ErrorCode> {
     // Read command
     outb(ATA_PRIMARY_COMM_REGSTAT, 0x20);
 
-    let mut res: Vec<u16> = Vec::with_capacity(total*SECTOR_SIZE);
+    let mut res: Vec<u16> = Vec::with_capacity(total * SECTOR_SIZE);
 
     for _ in 0..total {
         // Wait until buffer is ready

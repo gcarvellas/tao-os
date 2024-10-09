@@ -28,7 +28,7 @@ fn get_path_part(path: &mut Chars) -> Option<String> {
                     return None;
                 }
                 return Some(res);
-            },
+            }
             Some(c) => c,
         };
 
@@ -46,7 +46,7 @@ fn get_path_part(path: &mut Chars) -> Option<String> {
 
 pub struct PathRoot {
     drive_no: u32,
-    parts: Vec<String>
+    parts: Vec<String>,
 }
 
 pub fn parse_path(path: String) -> Result<PathRoot, ErrorCode> {
@@ -60,7 +60,7 @@ pub fn parse_path(path: String) -> Result<PathRoot, ErrorCode> {
 
     let mut path_root = PathRoot {
         drive_no,
-        parts: Vec::new()
+        parts: Vec::new(),
     };
 
     while let Some(val) = get_path_part(&mut tmp_path) {
