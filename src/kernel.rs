@@ -49,32 +49,28 @@ mod memory;
 mod status;
 extern crate alloc;
 extern crate bilge;
-extern crate lazy_static;
 extern crate spin;
 extern crate volatile;
-use crate::disk::ata_pio_read28;
+use crate::disk::ata::ata_pio_read28;
 use crate::fs::pparser::parse_path;
-use crate::fs::pparser::PathRoot;
 use crate::idt::disable_interrupts;
 use crate::idt::enable_interrupts;
 use crate::idt::Idt;
 use crate::io::vga::VgaDisplay;
 use crate::memory::heap::KERNEL_HEAP;
-use crate::memory::paging::paging::PageAddress;
-use crate::memory::paging::paging::PageDirectoryEntry;
-use crate::memory::paging::paging::Paging256TBChunk;
+use crate::memory::paging::PageAddress;
+use crate::memory::paging::PageDirectoryEntry;
+use crate::memory::paging::Paging256TBChunk;
 use alloc::boxed::Box;
-use alloc::string::String;
 use core::panic::PanicInfo;
-use lazy_static::lazy_static;
+use spin::Lazy;
 use spin::Mutex;
 
-lazy_static! {
-    static ref SCREEN: Mutex<VgaDisplay> =
-        Mutex::new(VgaDisplay::new().expect("Failed to initialize VGA"));
-    static ref IDT: Idt = Idt::new().expect("Failed to initialize IDT");
-    static ref CURRENT_PAGE_DIRECTORY: Mutex<Option<Paging256TBChunk<'static>>> = Mutex::new(None);
-}
+pub static SCREEN: Lazy<Mutex<VgaDisplay>> =
+    Lazy::new(|| Mutex::new(VgaDisplay::new().expect("Failed to initialize VGA")));
+pub static IDT: Lazy<Idt> = Lazy::new(|| Idt::new().expect("Failed to initialize IDT"));
+pub static CURRENT_PAGE_DIRECTORY: Lazy<Mutex<Option<Paging256TBChunk>>> =
+    Lazy::new(|| Mutex::new(None));
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
@@ -131,7 +127,7 @@ fn test_paging() {
     }
 
     // TODO once chunk.switch() is called, the main kernel page is lost
-    chunk.switch();
+    Paging256TBChunk::switch(chunk);
     println!("After switch");
 
     let ptr2 = 0x1000 as *mut char;
@@ -168,7 +164,7 @@ pub extern "C" fn kernel_main() -> ! {
 
     println!("testing a path parse");
 
-    let _root_path = parse_path(String::from("0:/bin/shell.exe"));
+    let _root_path = parse_path("0:/bin/shell.exe");
 
     println!("Testing a disk read");
 

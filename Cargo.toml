@@ -7,7 +7,6 @@ authors = ["gcarvellas"]
 
 [dependencies]
 bilge = "0.2.0"
-lazy_static = { version = "1.5.0", features = ["spin_no_std"] }
 spin = "0.9.8"
 volatile = "0.2.6"
 
