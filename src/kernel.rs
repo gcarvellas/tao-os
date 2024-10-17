@@ -51,7 +51,7 @@ extern crate alloc;
 extern crate bilge;
 extern crate spin;
 extern crate volatile;
-use crate::disk::ata::ata_pio_read28;
+use crate::disk::ata_pio::ata_pio_28::AtaPio28;
 use crate::fs::pparser::parse_path;
 use crate::idt::disable_interrupts;
 use crate::idt::enable_interrupts;
@@ -63,6 +63,7 @@ use crate::memory::paging::PageDirectoryEntry;
 use crate::memory::paging::Paging256TBChunk;
 use alloc::boxed::Box;
 use core::panic::PanicInfo;
+use disk::diskreader::DiskReader;
 use spin::Lazy;
 use spin::Mutex;
 
@@ -168,7 +169,8 @@ pub extern "C" fn kernel_main() -> ! {
 
     println!("Testing a disk read");
 
-    let _buf = ata_pio_read28(0, 1);
+    let master_disk = AtaPio28::resolve(0).expect("Failed to initialize master disk");
+    let _buf = master_disk.read(0).expect("Failed to read hard disk");
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
 

@@ -7,6 +7,8 @@ pub enum ErrorCode {
     OutOfBounds,
     Io,
     BadPath,
+    DiskNotUs,
+    FsNotUs,
 }
 
 impl From<TryFromIntError> for ErrorCode {
