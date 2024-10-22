@@ -98,6 +98,12 @@ struct FatDirectoryItem {
     filesize: u32,
 }
 
+impl FatDirectoryItem {
+    fn first_cluster(&self) -> u16 {
+        self.high_16_bits_first_cluster | self.low_16_bits_first_cluster
+    }
+}
+
 // Internal Structures
 
 struct FatDirectory {
@@ -152,13 +158,8 @@ enum FatItem {
     Directory(FatDirectory),
 }
 
-union FatItemData {
-    item: *const FatDirectoryItem,
-    directory: *const FatDirectory,
-}
-
 struct FatFileDescriptor {
-    item: FatItem,
+    item: Arc<FatItem>,
     pos: u32,
 }
 
@@ -284,12 +285,12 @@ impl Fat16 {
         Ok(cluster_to_use)
     }
 
-    fn read_internal_recursively(
+    fn read_internal_recursively<T : Sized>(
         &mut self,
         cluster: u16,
         offset: usize,
         mut total: usize,
-        out: &mut [FatDirectoryItem],
+        out: &mut [T],
         mut idx: usize,
     ) -> Result<(), ErrorCode> {
         let size_of_cluster_bytes =
@@ -309,7 +310,8 @@ impl Fat16 {
 
         self.private.cluster_read_stream.seek(starting_pos);
 
-        let mut buf = [0; size_of::<FatDirectoryItem>()];
+        let size = size_of::<T>();
+        let mut buf = Vec::with_capacity(size);
         *out.get_mut(idx).ok_or(ErrorCode::OutOfBounds)? =
             self.private.cluster_read_stream.read_into(&mut buf)?;
         idx += 1;
@@ -321,12 +323,12 @@ impl Fat16 {
         }
     }
 
-    fn read_internal(
+    fn read_internal<T: Sized>(
         &mut self,
         cluster: u16,
         offset: usize,
         total: usize,
-        out: &mut [FatDirectoryItem],
+        out: &mut [T],
     ) -> Result<(), ErrorCode> {
         self.read_internal_recursively(cluster, offset, total, out, 0)
     }
@@ -336,7 +338,7 @@ impl Fat16 {
             return Err(ErrorCode::InvArg);
         }
 
-        let cluster = get_first_cluster(item);
+        let cluster = item.first_cluster();
         let cluster_sector = self.cluster_to_sector(cluster);
         let total_items: usize = get_total_items_for_directory(
             self.sector_size,
@@ -423,6 +425,7 @@ fn to_proper_fat16_bytes(
         let mut current_byte = *bytes.get(i).ok_or(ErrorCode::OutOfBounds)?;
         while current_byte != 0x00 && current_byte != 0x20 {
             *out.get_mut(i + offset).ok_or(ErrorCode::OutOfBounds)? = current_byte;
+
             if i >= size - 1 {
                 break; // We exceeded input buffer size. Cannot process anymore
             }
@@ -436,20 +439,16 @@ fn to_proper_fat16_bytes(
 fn get_full_relative_filename(item: &FatDirectoryItem) -> Result<String, ErrorCode> {
     let mut out = [0; MAX_PATH];
     let mut offset = 0;
+
     offset += to_proper_fat16_bytes(&item.filename, &mut out, item.filename.len(), 0)?;
 
     if item.ext[0] != 0x00 && item.ext[0] != 0x20 {
-        // This should never fail, since filename will always be far less than MAX_PATH
         *out.get_mut(offset).unwrap() = b'.';
 
         offset += 1;
         to_proper_fat16_bytes(&item.ext, &mut out, item.ext.len(), offset)?;
     }
     char_array_to_ascii_string(&out)
-}
-
-fn get_first_cluster(item: &FatDirectoryItem) -> u16 {
-    item.high_16_bits_first_cluster | item.low_16_bits_first_cluster
 }
 
 impl FileSystem for Fat16 {
@@ -480,7 +479,7 @@ impl FileSystem for Fat16 {
 
         self.fds.push(FatFileDescriptor {
             pos: 0,
-            item: root_item,
+            item: Arc::new(root_item),
         });
         Ok(())
     }
@@ -489,8 +488,21 @@ impl FileSystem for Fat16 {
         unimplemented!()
     }
 
-    fn fread(&self, size: u32, nmemb: u32, fd: usize) -> Result<&[u16], ErrorCode> {
-        unimplemented!()
+    fn fread(&mut self, out: &mut [u16], size: u32, nmemb: u32, fd: usize) -> Result<u32, ErrorCode> {
+
+        let fat_desc = self.fds.get(fd).ok_or(ErrorCode::InvArg)?;
+        let item_binding = Arc::clone(&fat_desc.item);
+        let item = match &*item_binding {
+            FatItem::File(file) => file,
+            FatItem::Directory(_) => panic!("Fat16 fd {} is a directory", fd),
+        };
+
+        let offset = fat_desc.pos;
+
+        for _ in 0..nmemb {
+            self.read_internal(item.first_cluster(), offset.try_into()?, size.try_into()?, out)?;
+        }
+        Ok(nmemb)
     }
 
     fn fstat(&self, fd: usize, stat: FileStat) -> Result<(), ErrorCode> {

@@ -59,6 +59,7 @@ use crate::memory::paging::PageAddress;
 use crate::memory::paging::PageDirectoryEntry;
 use crate::memory::paging::Paging256TBChunk;
 use alloc::boxed::Box;
+use fs::file::fread;
 use core::panic::PanicInfo;
 use fs::file::fopen;
 use idt::IDT;
@@ -157,9 +158,14 @@ pub extern "C" fn kernel_main() -> ! {
 
     test_paging();
 
-    println!("Attempting to open 0:/hello.txt");
-    let fd = fopen("1:/HELLO.TXT", "r").expect("Failed to open hello.txt");
+    println!("Attempting to open 1:/HELLO.TXT");
+    let fd = fopen("1:/HELLO.TXT", "r").expect("Failed to open HELLO.TXT");
     println!("We opened 1:/HELLO.TXT at fd {}", fd);
+
+    let mut buf = [0; 8];
+    fread(&mut buf, 8, 1, fd).expect("Failed to read HELLO.TXT");
+    println!("We read 1:/HELLO.TXT: \"{:?}\"", buf);
+    
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
 

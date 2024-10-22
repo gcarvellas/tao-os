@@ -12,7 +12,6 @@ use crate::disk::Disk;
 use crate::status::ErrorCode;
 
 use super::pparser::parse_path;
-use super::FileSystem;
 
 static FILE_DESCRIPTORS: RwLock<[Option<Arc<FileDescriptor>>; MAX_FILE_DESCRIPTORS]> =
     RwLock::new([const { None }; MAX_FILE_DESCRIPTORS]);
@@ -48,33 +47,27 @@ pub struct FileDescriptor {
 impl FileDescriptor {
     pub fn new(disk: Arc<Mutex<Disk>>) -> Result<Arc<Self>, ErrorCode> {
         let mut descriptors = FILE_DESCRIPTORS.write();
+        
+        if let Some((i, slot)) = descriptors.iter_mut().enumerate().find(|(_, d)| d.is_none()) {
+            let fd = Arc::new(Self {
+                index: i + 1,
+                disk: Arc::clone(&disk),
+            });
 
-        for (i, descriptor) in descriptors.iter_mut().enumerate() {
-            if descriptor.is_none() {
-                let fd = Arc::new(Self {
-                    index: i + 1,
-                    disk: Arc::clone(&disk),
-                });
-
-                *descriptor = Some(Arc::clone(&fd));
-
-                return Ok(fd);
-            }
+            *slot = Some(Arc::clone(&fd));
+            return Ok(fd);
         }
         Err(ErrorCode::NoFdAvailable)
     }
 
-    pub fn get(fd: FileDescriptorIndex) -> Result<Option<Arc<Self>>, ErrorCode> {
-        // Descriptors start at 1
-        let index = fd - 1;
-
-        let descriptors = FILE_DESCRIPTORS.read();
-
-        Ok(descriptors
-            .get(index)
+    pub fn get(fd: FileDescriptorIndex) -> Result<Arc<Self>, ErrorCode> {
+        FILE_DESCRIPTORS
+            .read()
+            .get(fd - 1) // descriptors start at 1
             .ok_or(ErrorCode::InvArg)?
             .as_ref()
-            .map(Arc::clone))
+            .map(Arc::clone)
+            .ok_or(ErrorCode::InvArg)
     }
 }
 
@@ -85,6 +78,23 @@ fn file_get_mode_by_string(mode_str: &str) -> FileMode {
         Some(b'a') => FileMode::Append,
         _ => FileMode::Invalid,
     }
+}
+
+pub fn fread(out: &mut [u16], size: u32, nmemb: u32, fd: FileDescriptorIndex) -> Result<(), ErrorCode> {
+    if size == 0 || nmemb == 0 || fd < 1 {
+        return Err(ErrorCode::InvArg);
+    }
+
+    let desc = FileDescriptor::get(fd)?;
+
+    {
+        let mut disk = desc.disk.lock();
+        match &mut disk.fs {
+            None => return Err(ErrorCode::NoFs),
+            Some(fs) => fs.fread(out, size, nmemb, fd)?
+        };
+    }
+    Ok(())
 }
 
 pub fn fopen(filename: &str, mode_str: &str) -> Result<FileDescriptorIndex, ErrorCode> {
