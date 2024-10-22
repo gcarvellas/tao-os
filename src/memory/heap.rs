@@ -29,7 +29,7 @@ use core::ptr;
  * 5-6: Is First
  * 6-7: Has Next
  */
-#[repr(C)]
+#[repr(C, packed)]
 #[bitsize(8)]
 #[derive(Clone, Copy, FromBits, Default)]
 pub struct HeapBlockTableEntry {
@@ -46,15 +46,14 @@ struct HeapTable {
 }
 
 /**
- * `AtomicPtr` needs to be used because the Heap doesn't have the Send trait, which would prevent the
- * Kernel Heap `lazy_static`! from working
+ * `AtomicPtr` needs to be used because the Heap wouldn't have the Send trait
+ *
  */
 pub struct Heap {
     s_addr: AtomicPtr<u8>,
     table_addr: AtomicPtr<u8>,
 }
 
-#[inline(always)]
 fn heap_validate_alignment(ptr: &AtomicPtr<u8>) -> bool {
     let ptr: usize = ptr.load(Ordering::Relaxed) as usize;
     (ptr % HEAP_BLOCK_SIZE) == 0
@@ -86,7 +85,7 @@ fn heap_align_value_to_upper(mut val: usize) -> usize {
 }
 
 impl Heap {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             s_addr: HEAP_ADDRESS,
             table_addr: HEAP_TABLE_ADDRESS,
@@ -158,7 +157,6 @@ impl Heap {
         Ok(res)
     }
 
-    #[inline(always)]
     fn get_table(&self) -> &mut HeapTable {
         unsafe { &mut *(self.table_addr.load(Ordering::Relaxed) as *mut HeapTable) }
     }

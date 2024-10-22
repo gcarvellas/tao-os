@@ -3,7 +3,7 @@ pub mod vga;
 
 use core::fmt::Arguments;
 
-use crate::SCREEN;
+use self::vga::SCREEN;
 
 #[macro_export]
 macro_rules! print {

@@ -9,6 +9,11 @@ pub enum ErrorCode {
     BadPath,
     DiskNotUs,
     FsNotUs,
+    Busy,
+    RdOnly,
+    NoFdAvailable,
+    NotFound,
+    NoFs,
 }
 
 impl From<TryFromIntError> for ErrorCode {

@@ -7,6 +7,7 @@ authors = ["gcarvellas"]
 
 [dependencies]
 bilge = "0.2.0"
+hashbrown = "0.15.0"
 spin = "0.9.8"
 volatile = "0.2.6"
 

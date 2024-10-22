@@ -52,8 +52,9 @@ _start:
     mov cr3, eax
     
     ; Each entry is 2MiB
-    %assign i 0
-    %rep 10 ;  Num of 2MiB pages
+    %assign i 0 
+    ; TODO find some way to dynamically allocate based on the kernel size
+    %rep 20 ;  Num of 2MiB pages
         SETUP_P2_ENTRY p2_table, i, 0x20_0000 * i
     %assign i i+1
     %endrep
@@ -123,7 +124,7 @@ p3_table:
 p2_table:
     resb 4096
 stack_begin:
-	resb 4096 * 4 ; 16 KiB 
+	resb 4096 * 8 ; 32 KB. TODO this is too big. This should be 8KB
 stack_end:
 
 section .rodata

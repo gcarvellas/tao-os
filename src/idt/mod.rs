@@ -4,11 +4,14 @@
  * https://wiki.osdev.org/Interrupt_Descriptor_Table#Structure_on_x86-64
  */
 
+use spin::Lazy;
+
 use crate::{config::TOTAL_INTERRUPTS, io::isr::outb, status::ErrorCode};
-use alloc::boxed::Box;
 use core::arch::asm;
 use core::convert::TryFrom;
 use core::mem::size_of;
+
+pub static IDT: Lazy<Idt> = Lazy::new(|| Idt::new().expect("Failed to initialize IDT"));
 
 extern "C" {
     fn no_interrupt();
@@ -25,7 +28,6 @@ fn no_interrupt_handler() {
     outb(0x20, 0x20);
 }
 
-#[inline(always)]
 pub fn enable_interrupts() {
     unsafe {
         asm! {
@@ -34,7 +36,6 @@ pub fn enable_interrupts() {
     }
 }
 
-#[inline(always)]
 pub fn disable_interrupts() {
     unsafe {
         asm! {
@@ -97,7 +98,7 @@ impl IdtrDesc {
 
 pub struct Idt {
     idtr_desc: IdtrDesc,
-    _idt_descriptors: Box<[IdtDesc; TOTAL_INTERRUPTS]>,
+    _idt_descriptors: [IdtDesc; TOTAL_INTERRUPTS],
 }
 
 impl Idt {
@@ -110,17 +111,14 @@ impl Idt {
         }
     }
     pub fn new() -> Result<Self, ErrorCode> {
-        let mut idt_descriptors = Box::new([IdtDesc::default(); TOTAL_INTERRUPTS]);
+        let mut idt_descriptors = [IdtDesc::default(); TOTAL_INTERRUPTS];
         let idtr_desc = IdtrDesc::new(idt_descriptors.as_ptr())?;
 
         for descriptor in idt_descriptors.iter_mut() {
             descriptor.set(no_interrupt)?;
         }
 
-        idt_descriptors
-            .get_mut(0x20)
-            .ok_or(ErrorCode::OutOfBounds)?
-            .set(int20h)?;
+        idt_descriptors[0x20].set(int20h)?;
 
         Ok(Self {
             _idt_descriptors: idt_descriptors,

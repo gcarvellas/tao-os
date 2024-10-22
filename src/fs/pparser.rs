@@ -2,6 +2,8 @@ use crate::status::ErrorCode;
 use config::MAX_PATH;
 use core::str::Split;
 
+pub type PathPart<'a> = Split<'a, char>;
+
 fn get_drive_by_path(path: &str) -> Result<u32, ErrorCode> {
     let mut chars = path.chars();
 
@@ -19,8 +21,8 @@ fn get_drive_by_path(path: &str) -> Result<u32, ErrorCode> {
 }
 
 pub struct PathRoot<'a> {
-    drive_no: u32,
-    parts: Split<'a, char>,
+    pub drive_no: u32,
+    pub parts: PathPart<'a>,
 }
 
 pub fn parse_path(path: &str) -> Result<PathRoot, ErrorCode> {

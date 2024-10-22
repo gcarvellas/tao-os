@@ -3,12 +3,15 @@
  */
 
 use core::fmt::Write;
+use spin::{Lazy, Mutex};
 use volatile::Volatile;
 
 use crate::status::ErrorCode;
 
 const VGA_WIDTH: usize = 80;
 const VGA_HEIGHT: usize = 25;
+pub static SCREEN: Lazy<Mutex<VgaDisplay>> =
+    Lazy::new(|| Mutex::new(VgaDisplay::new().expect("Failed to initialize VGA")));
 
 #[repr(transparent)]
 struct Buffer {
@@ -53,7 +56,7 @@ impl ColorCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(C)]
+#[repr(C, packed)]
 struct ScreenChar {
     ascii_character: u8,
     color_code: ColorCode,

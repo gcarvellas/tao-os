@@ -1,6 +1,5 @@
 use core::arch::asm;
 
-#[inline(always)]
 pub fn insb(port: u16) -> u8 {
     let res: u8;
     unsafe {
@@ -13,7 +12,6 @@ pub fn insb(port: u16) -> u8 {
     res
 }
 
-#[inline(always)]
 pub fn insw(port: u16) -> u16 {
     let mut res;
     unsafe {
@@ -26,7 +24,6 @@ pub fn insw(port: u16) -> u16 {
     res
 }
 
-#[inline(always)]
 pub fn outb(port: u16, value: u8) {
     unsafe {
         asm!(
@@ -37,7 +34,6 @@ pub fn outb(port: u16, value: u8) {
     }
 }
 
-#[inline(always)]
 pub fn outw(port: u16, value: u16) {
     unsafe {
         asm!(

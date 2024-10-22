@@ -7,12 +7,13 @@
  */
 
 extern crate volatile;
-use crate::CURRENT_PAGE_DIRECTORY;
-use crate::{status::ErrorCode, KERNEL_HEAP};
+use crate::status::ErrorCode;
 use bilge::prelude::*;
 use core::convert::{TryFrom, TryInto};
 use core::{arch::asm, mem::size_of};
+use spin::Mutex;
 use volatile::Volatile;
+use KERNEL_HEAP;
 
 /*
  * Each page table contains 512 8-byte entries
@@ -21,6 +22,8 @@ const PAGING_TOTAL_ENTRIES_PER_TABLE: usize = 512;
 const PAGING_PAGE_SIZE: usize = PAGING_TOTAL_ENTRIES_PER_TABLE * size_of::<usize>();
 
 pub type PageAddress = *mut usize;
+
+static CURRENT_PAGE_DIRECTORY: Mutex<Option<Paging256TBChunk>> = Mutex::new(None);
 
 /**
  *  x86_64 PDE Layout:
@@ -40,7 +43,7 @@ pub type PageAddress = *mut usize;
  *  59-62: Protection Key
  *  62-63: Execute Disabled
  */
-#[repr(C)]
+#[repr(C, packed)]
 #[bitsize(64)]
 #[derive(Clone, Copy, FromBits, Default)]
 pub struct PageDirectoryEntry {
@@ -143,17 +146,14 @@ impl PageMapIndexes {
 /*
  * Manually allocate memory to prevent Rust from freeing pages at random
  */
-#[inline(always)]
 fn page_alloc(size: usize) -> Result<PageAddress, ErrorCode> {
     Ok(KERNEL_HEAP.zalloc(size)? as PageAddress)
 }
 
-#[inline(always)]
 fn is_aligned(addr: PageAddress) -> bool {
     (addr as usize % PAGING_PAGE_SIZE) == 0
 }
 
-#[inline(always)]
 fn align_to_lower_page(addr: PageAddress) -> PageAddress {
     let mut addr_usize = addr as usize;
     addr_usize -= addr_usize % PAGING_PAGE_SIZE;
@@ -214,8 +214,10 @@ impl Paging256TBChunk {
                 in(reg) addr
             }
 
-            let mut current_page_directory = CURRENT_PAGE_DIRECTORY.lock();
-            *current_page_directory = Some(new);
+            {
+                let mut current_page_directory = CURRENT_PAGE_DIRECTORY.lock();
+                *current_page_directory = Some(new);
+            }
         }
     }
 

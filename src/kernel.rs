@@ -49,29 +49,19 @@ mod memory;
 mod status;
 extern crate alloc;
 extern crate bilge;
+extern crate hashbrown;
 extern crate spin;
 extern crate volatile;
-use crate::disk::ata_pio::AtaPio;
-use crate::fs::pparser::parse_path;
 use crate::idt::disable_interrupts;
 use crate::idt::enable_interrupts;
-use crate::idt::Idt;
-use crate::io::vga::VgaDisplay;
 use crate::memory::heap::KERNEL_HEAP;
 use crate::memory::paging::PageAddress;
 use crate::memory::paging::PageDirectoryEntry;
 use crate::memory::paging::Paging256TBChunk;
 use alloc::boxed::Box;
 use core::panic::PanicInfo;
-use disk::diskreader::DiskReader;
-use spin::Lazy;
-use spin::Mutex;
-
-pub static SCREEN: Lazy<Mutex<VgaDisplay>> =
-    Lazy::new(|| Mutex::new(VgaDisplay::new().expect("Failed to initialize VGA")));
-pub static IDT: Lazy<Idt> = Lazy::new(|| Idt::new().expect("Failed to initialize IDT"));
-pub static CURRENT_PAGE_DIRECTORY: Lazy<Mutex<Option<Paging256TBChunk>>> =
-    Lazy::new(|| Mutex::new(None));
+use fs::file::fopen;
+use idt::IDT;
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
@@ -148,9 +138,13 @@ fn test_paging() {
 // TODO use cargo's testing to do this https://os.phil-opp.com/testing/
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
-    KERNEL_HEAP.init().unwrap();
+    {
+        KERNEL_HEAP.init().unwrap();
+    }
 
-    IDT.load();
+    {
+        IDT.load();
+    }
     enable_interrupts();
 
     println!(
@@ -163,14 +157,9 @@ pub extern "C" fn kernel_main() -> ! {
 
     test_paging();
 
-    println!("testing a path parse");
-
-    let _root_path = parse_path("0:/bin/shell.exe");
-
-    println!("Testing a disk read");
-
-    let master_disk = AtaPio::resolve(0).expect("Failed to initialize master disk");
-    let _buf = master_disk.read(0, 1).expect("Failed to read hard disk");
+    println!("Attempting to open 0:/hello.txt");
+    let fd = fopen("1:/HELLO.TXT", "r").expect("Failed to open hello.txt");
+    println!("We opened 1:/HELLO.TXT at fd {}", fd);
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
 

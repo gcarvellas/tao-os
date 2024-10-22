@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 
 use crate::{config::SECTOR_SIZE, status::ErrorCode};
 
@@ -21,32 +20,54 @@ impl DiskStreamer {
         self.pos = pos;
     }
 
-    pub fn read(&mut self, total: usize) -> Result<Vec<u16>, ErrorCode> {
+    pub fn read(&mut self, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
         let sector = self.pos / SECTOR_SIZE;
         let offset = self.pos % SECTOR_SIZE;
-        let mut total_to_read = if total > SECTOR_SIZE {
-            SECTOR_SIZE
-        } else {
-            total
-        };
-
+        let mut total_to_read = total.min(SECTOR_SIZE);
         let overflow = (offset + total_to_read) >= SECTOR_SIZE;
+
+        let mut buf = [0; SECTOR_SIZE];
 
         if overflow {
             total_to_read -= (offset + total_to_read) - SECTOR_SIZE;
         }
 
-        let mut buf = self.reader.read(sector, 1)?;
-        self.pos += total_to_read;
-
-        if overflow {
-            buf.extend(self.read(total - SECTOR_SIZE)?);
+        let mut count = self.reader.read(sector, &mut buf, 1)?;
+        if total_to_read > count {
+            total_to_read = count;
         }
 
-        Ok(buf)
+        for i in 0..total_to_read {
+            let val = *buf.get(offset + i).ok_or(ErrorCode::OutOfBounds)?;
+            *out.get_mut(i).ok_or(ErrorCode::OutOfBounds)? = val;
+        }
+
+        // Adjust the stream
+        self.pos += total_to_read;
+        if overflow {
+            count += self.read(out, total - SECTOR_SIZE)?;
+        }
+
+        Ok(count)
     }
 
-    pub fn write(&mut self, data: Vec<u16>) -> Result<(), ErrorCode> {
+    pub fn read_into<T: Sized>(&mut self, buf: &mut [u16]) -> Result<T, ErrorCode> {
+        // Buf is a u16 so half the siz
+        let size = size_of::<T>() / 2;
+
+        if self.read(buf, size)? < size {
+            return Err(ErrorCode::Io);
+        };
+
+        let res: T = unsafe {
+            let ptr = buf.as_ptr() as *const T;
+            ptr.read()
+        };
+
+        Ok(res)
+    }
+
+    pub fn write(&mut self, data: &mut [u16]) -> Result<(), ErrorCode> {
         unimplemented!()
     }
 }
