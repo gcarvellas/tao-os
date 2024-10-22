@@ -285,7 +285,7 @@ impl Fat16 {
         Ok(cluster_to_use)
     }
 
-    fn read_internal_recursively<T : Sized>(
+    fn read_internal_recursively<T: Sized>(
         &mut self,
         cluster: u16,
         offset: usize,
@@ -488,8 +488,13 @@ impl FileSystem for Fat16 {
         unimplemented!()
     }
 
-    fn fread(&mut self, out: &mut [u16], size: u32, nmemb: u32, fd: usize) -> Result<u32, ErrorCode> {
-
+    fn fread(
+        &mut self,
+        out: &mut [u16],
+        size: u32,
+        nmemb: u32,
+        fd: usize,
+    ) -> Result<u32, ErrorCode> {
         let fat_desc = self.fds.get(fd).ok_or(ErrorCode::InvArg)?;
         let item_binding = Arc::clone(&fat_desc.item);
         let item = match &*item_binding {
@@ -500,7 +505,12 @@ impl FileSystem for Fat16 {
         let offset = fat_desc.pos;
 
         for _ in 0..nmemb {
-            self.read_internal(item.first_cluster(), offset.try_into()?, size.try_into()?, out)?;
+            self.read_internal(
+                item.first_cluster(),
+                offset.try_into()?,
+                size.try_into()?,
+                out,
+            )?;
         }
         Ok(nmemb)
     }

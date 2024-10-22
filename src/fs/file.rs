@@ -47,8 +47,12 @@ pub struct FileDescriptor {
 impl FileDescriptor {
     pub fn new(disk: Arc<Mutex<Disk>>) -> Result<Arc<Self>, ErrorCode> {
         let mut descriptors = FILE_DESCRIPTORS.write();
-        
-        if let Some((i, slot)) = descriptors.iter_mut().enumerate().find(|(_, d)| d.is_none()) {
+
+        if let Some((i, slot)) = descriptors
+            .iter_mut()
+            .enumerate()
+            .find(|(_, d)| d.is_none())
+        {
             let fd = Arc::new(Self {
                 index: i + 1,
                 disk: Arc::clone(&disk),
@@ -80,7 +84,12 @@ fn file_get_mode_by_string(mode_str: &str) -> FileMode {
     }
 }
 
-pub fn fread(out: &mut [u16], size: u32, nmemb: u32, fd: FileDescriptorIndex) -> Result<(), ErrorCode> {
+pub fn fread(
+    out: &mut [u16],
+    size: u32,
+    nmemb: u32,
+    fd: FileDescriptorIndex,
+) -> Result<(), ErrorCode> {
     if size == 0 || nmemb == 0 || fd < 1 {
         return Err(ErrorCode::InvArg);
     }
@@ -91,7 +100,7 @@ pub fn fread(out: &mut [u16], size: u32, nmemb: u32, fd: FileDescriptorIndex) ->
         let mut disk = desc.disk.lock();
         match &mut disk.fs {
             None => return Err(ErrorCode::NoFs),
-            Some(fs) => fs.fread(out, size, nmemb, fd)?
+            Some(fs) => fs.fread(out, size, nmemb, fd)?,
         };
     }
     Ok(())

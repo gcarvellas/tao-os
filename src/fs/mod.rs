@@ -21,7 +21,13 @@ pub trait FileSystem: Send + Sync {
         mode: FileMode,
     ) -> Result<(), ErrorCode>;
     fn fseek(&self, fd: usize, offset: usize, whence: FileSeekMode) -> Result<(), ErrorCode>;
-    fn fread(&mut self, out: &mut [u16], size: u32, nmemb: u32, fd: usize) -> Result<u32, ErrorCode>;
+    fn fread(
+        &mut self,
+        out: &mut [u16],
+        size: u32,
+        nmemb: u32,
+        fd: usize,
+    ) -> Result<u32, ErrorCode>;
     fn fstat(&self, fd: usize, stat: FileStat) -> Result<(), ErrorCode>;
     fn fclose(&self, fd: usize) -> Result<(), ErrorCode>;
     fn fs_resolve(disk: &Disk) -> Result<Self, ErrorCode>
