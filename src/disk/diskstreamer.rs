@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use spin::RwLock;
 
 use crate::{config::SECTOR_SIZE, status::ErrorCode};
 
@@ -6,23 +7,27 @@ use super::diskreader::{find_diskreader, DiskReader};
 
 pub struct DiskStreamer {
     reader: Box<dyn DiskReader>,
-    pos: usize,
+    pos: RwLock<usize>,
 }
 
 impl DiskStreamer {
     pub fn new(disk_id: usize) -> Result<Self, ErrorCode> {
         let reader = find_diskreader(disk_id)?;
         let pos = 0;
-        Ok(Self { reader, pos })
+        Ok(Self {
+            reader,
+            pos: RwLock::new(pos),
+        })
     }
 
-    pub fn seek(&mut self, pos: usize) {
-        self.pos = pos;
+    pub fn seek(&self, pos: usize) {
+        *self.pos.write() = pos;
     }
 
-    pub fn read(&mut self, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
-        let sector = self.pos / SECTOR_SIZE;
-        let offset = self.pos % SECTOR_SIZE;
+    pub fn read(&self, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
+        let pos = *self.pos.read();
+        let sector = pos / SECTOR_SIZE;
+        let offset = pos % SECTOR_SIZE;
         let mut total_to_read = total.min(SECTOR_SIZE);
         let overflow = (offset + total_to_read) >= SECTOR_SIZE;
 
@@ -43,7 +48,10 @@ impl DiskStreamer {
         }
 
         // Adjust the stream
-        self.pos += total_to_read;
+        {
+            *self.pos.write() += total_to_read;
+        }
+
         if overflow {
             count += self.read(out, total - SECTOR_SIZE)?;
         }
@@ -51,7 +59,7 @@ impl DiskStreamer {
         Ok(count)
     }
 
-    pub fn read_into<T: Sized>(&mut self, buf: &mut [u16]) -> Result<T, ErrorCode> {
+    pub fn read_into<T: Sized>(&self, buf: &mut [u16]) -> Result<T, ErrorCode> {
         // Buf is a u16 so half the siz
         let size = size_of::<T>() / 2;
 
@@ -67,7 +75,7 @@ impl DiskStreamer {
         Ok(res)
     }
 
-    pub fn write(&mut self, data: &mut [u16]) -> Result<(), ErrorCode> {
+    pub fn write(&self, data: &mut [u16]) -> Result<(), ErrorCode> {
         unimplemented!()
     }
 }

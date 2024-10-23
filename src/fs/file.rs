@@ -4,7 +4,6 @@ use bilge::prelude::u7;
 use bilge::prelude::Number;
 use bilge::Bitsized;
 use core::convert::TryFrom;
-use spin::Mutex;
 use spin::RwLock;
 
 use crate::config::MAX_FILE_DESCRIPTORS;
@@ -41,11 +40,11 @@ pub enum FileSeekMode {
 
 pub struct FileDescriptor {
     index: FileDescriptorIndex,
-    disk: Arc<Mutex<Disk>>,
+    disk: Arc<Disk>,
 }
 
 impl FileDescriptor {
-    pub fn new(disk: Arc<Mutex<Disk>>) -> Result<Arc<Self>, ErrorCode> {
+    pub fn new(disk: Arc<Disk>) -> Result<Arc<Self>, ErrorCode> {
         let mut descriptors = FILE_DESCRIPTORS.write();
 
         if let Some((i, slot)) = descriptors
@@ -97,8 +96,7 @@ pub fn fread(
     let desc = FileDescriptor::get(fd)?;
 
     {
-        let mut disk = desc.disk.lock();
-        match &mut disk.fs {
+        match &desc.disk.fs {
             None => return Err(ErrorCode::NoFs),
             Some(fs) => fs.fread(out, size, nmemb, fd)?,
         };
@@ -120,8 +118,7 @@ pub fn fopen(filename: &str, mode_str: &str) -> Result<FileDescriptorIndex, Erro
 
     let fd = FileDescriptor::new(disk)?;
     {
-        let mut disk = fd.disk.lock();
-        match &mut disk.fs {
+        match &fd.disk.fs {
             None => return Err(ErrorCode::NoFs),
             Some(fs) => fs.fopen(fd.index, root_path.parts, mode)?,
         }

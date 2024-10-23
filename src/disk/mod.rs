@@ -4,7 +4,7 @@ pub mod diskstreamer;
 
 use alloc::{boxed::Box, sync::Arc};
 use hashbrown::HashMap;
-use spin::{Lazy, Mutex, RwLock};
+use spin::{Lazy, RwLock};
 
 use crate::{
     config::SECTOR_SIZE,
@@ -12,8 +12,7 @@ use crate::{
     status::ErrorCode,
 };
 
-static DISKS: Lazy<RwLock<HashMap<usize, Arc<Mutex<Disk>>>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+static DISKS: Lazy<RwLock<HashMap<usize, Arc<Disk>>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 
 pub struct Disk {
     pub id: usize,
@@ -35,14 +34,14 @@ impl Disk {
         Ok(disk)
     }
 
-    pub fn get(id: usize) -> Result<Arc<Mutex<Self>>, ErrorCode> {
+    pub fn get(id: usize) -> Result<Arc<Self>, ErrorCode> {
         {
             let disks = DISKS.read();
             if let Some(disk) = &disks.get(&id) {
                 return Ok(Arc::clone(disk));
             }
         }
-        let disk = Arc::new(Mutex::new(Self::new(id)?));
+        let disk = Arc::new(Self::new(id)?);
         {
             let mut disks = DISKS.write();
             disks.insert(id, Arc::clone(&disk));

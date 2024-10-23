@@ -3,8 +3,10 @@
  * https://wiki.osdev.org/ATA_PIO_Mode#Polling_the_Status_vs._IRQs
  */
 
+use alloc::sync::Arc;
 use bilge::prelude::*;
 use core::convert::{TryFrom, TryInto};
+use spin::{Lazy, Mutex};
 
 use crate::{
     disk::diskreader::DiskReader,
@@ -41,6 +43,12 @@ const SECTOR_SIZE: usize = 256;
 
 const MAX_POLL_ATTEMPTS: usize = 15;
 
+type DiskLock = Arc<Mutex<()>>;
+
+// ATA PIO actions must be synchronous
+static PRIMARY_DRIVE_MUTEX: Lazy<DiskLock> = Lazy::new(|| Arc::new(Mutex::new(())));
+static SECONDARY_DRIVE_MUTEX: Lazy<DiskLock> = Lazy::new(|| Arc::new(Mutex::new(())));
+
 #[bitsize(8)]
 #[derive(Clone, Copy, FromBits)]
 struct AtaPioStatusRegister {
@@ -57,6 +65,7 @@ struct AtaPioStatusRegister {
 // TODO this always assumes compatibility mode and never checks the PCI config
 //https://wiki.osdev.org/PCI_IDE_Controller
 pub struct AtaPio {
+    id: usize,
     base_addr: u16,
     select_28: usize,
     select_48: usize,
@@ -69,6 +78,7 @@ enum AtaPioModes {
     Ata28,
 }
 
+// Assumes atomicity
 fn poll_read(base_addr: u16, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
     let mut size = 0;
     for i in 0..total {
@@ -90,7 +100,7 @@ fn poll_read(base_addr: u16, out: &mut [u16], total: usize) -> Result<usize, Err
             count += 1;
         }
         for j in 0..SECTOR_SIZE {
-            *out.get_mut(i * SECTOR_SIZE * j)
+            *out.get_mut(i * SECTOR_SIZE + j)
                 .ok_or(ErrorCode::OutOfBounds)? = insw(base_addr + ATA_DATA);
         }
         size += SECTOR_SIZE;
@@ -107,6 +117,7 @@ impl AtaPio {
         lba48_size: Option<u64>,
     ) -> Self {
         Self {
+            id: disk_id,
             base_addr,
             select_28: if is_slave {
                 ATA_28_SLAVE_SELECT
@@ -127,58 +138,71 @@ impl AtaPio {
         // Select master/slave drive and pass part of the LBA
 
         let lba_h = ((lba >> 28) & 0x0F) | self.select_28;
-        outb(self.base_addr + ATA_DRIVE_HEAD, lba_h.try_into()?);
 
-        // Send the total number of sectors we want to read
-        outb(self.base_addr + ATA_SECCOUNT, total.try_into()?);
+        let lock = get_lock(self.id)?;
 
-        // Send more of the LBA
-        outb(self.base_addr + ATA_LBA_LO, (lba & 0xff).try_into()?);
-        outb(self.base_addr + ATA_LBA_MID, (lba >> 8).try_into()?);
-        outb(self.base_addr + ATA_LBA_HI, (lba >> 16).try_into()?);
+        {
+            lock.lock();
 
-        // Read command
-        outb(self.base_addr + ATA_COMM_REGSTAT, ATA_28_READ);
+            outb(self.base_addr + ATA_DRIVE_HEAD, lba_h.try_into()?);
 
-        poll_read(self.base_addr, out, total)
+            // Send the total number of sectors we want to read
+            outb(self.base_addr + ATA_SECCOUNT, total.try_into()?);
+
+            // Send more of the LBA
+            outb(self.base_addr + ATA_LBA_LO, (lba & 0xff).try_into()?);
+            outb(self.base_addr + ATA_LBA_MID, (lba >> 8).try_into()?);
+            outb(self.base_addr + ATA_LBA_HI, (lba >> 16).try_into()?);
+
+            // Read command
+            outb(self.base_addr + ATA_COMM_REGSTAT, ATA_28_READ);
+
+            poll_read(self.base_addr, out, total)
+        }
     }
 
     fn read48(&self, lba: usize, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
-        // Select master/slave drive
-        outb(self.base_addr + ATA_DRIVE_HEAD, self.select_48.try_into()?);
+        let lock = get_lock(self.id)?;
 
-        // Sectorcount high
-        outb(
-            self.base_addr + ATA_SECCOUNT,
-            ((total >> 8) & 0xFF).try_into()?,
-        );
+        {
+            lock.lock();
 
-        // lba4, 5, 6
-        outb(
-            self.base_addr + ATA_LBA_LO,
-            ((lba >> 24) & 0xff).try_into()?,
-        );
-        outb(
-            self.base_addr + ATA_LBA_MID,
-            ((lba >> 32) & 0xff).try_into()?,
-        );
-        outb(
-            self.base_addr + ATA_LBA_HI,
-            ((lba >> 40) & 0xff).try_into()?,
-        );
+            // Select master/slave drive
+            outb(self.base_addr + ATA_DRIVE_HEAD, self.select_48.try_into()?);
 
-        // Sectorcount low
-        outb(self.base_addr + ATA_SECCOUNT, (total & 0xFF).try_into()?);
+            // Sectorcount high
+            outb(
+                self.base_addr + ATA_SECCOUNT,
+                ((total >> 8) & 0xFF).try_into()?,
+            );
 
-        // lba1, 2, 3
-        outb(self.base_addr + ATA_LBA_LO, (lba & 0xff).try_into()?);
-        outb(self.base_addr + ATA_LBA_MID, (lba >> 8).try_into()?);
-        outb(self.base_addr + ATA_LBA_HI, (lba >> 16).try_into()?);
+            // lba4, 5, 6
+            outb(
+                self.base_addr + ATA_LBA_LO,
+                ((lba >> 24) & 0xff).try_into()?,
+            );
+            outb(
+                self.base_addr + ATA_LBA_MID,
+                ((lba >> 32) & 0xff).try_into()?,
+            );
+            outb(
+                self.base_addr + ATA_LBA_HI,
+                ((lba >> 40) & 0xff).try_into()?,
+            );
 
-        // Read command
-        outb(self.base_addr + ATA_COMM_REGSTAT, ATA_48_READ);
+            // Sectorcount low
+            outb(self.base_addr + ATA_SECCOUNT, (total & 0xFF).try_into()?);
 
-        poll_read(self.base_addr, out, total)
+            // lba1, 2, 3
+            outb(self.base_addr + ATA_LBA_LO, (lba & 0xff).try_into()?);
+            outb(self.base_addr + ATA_LBA_MID, (lba >> 8).try_into()?);
+            outb(self.base_addr + ATA_LBA_HI, (lba >> 16).try_into()?);
+
+            // Read command
+            outb(self.base_addr + ATA_COMM_REGSTAT, ATA_48_READ);
+
+            poll_read(self.base_addr, out, total)
+        }
     }
 
     fn get_mode(&self) -> AtaPioModes {
@@ -189,12 +213,28 @@ impl AtaPio {
     }
 }
 
+fn is_primary(disk_id: usize) -> Result<bool, ErrorCode> {
+    match disk_id {
+        0 | 1 => Ok(true),
+        2 | 3 => Ok(false),
+        _ => panic!("Invalid disk id {}", disk_id),
+    }
+}
+
+fn get_lock(disk_id: usize) -> Result<DiskLock, ErrorCode> {
+    Ok(match is_primary(disk_id)? {
+        true => Arc::clone(&PRIMARY_DRIVE_MUTEX),
+        false => Arc::clone(&SECONDARY_DRIVE_MUTEX),
+    })
+}
+
 impl DiskReader for AtaPio {
-    // TODO need one mutex for primary and one for secondary
     fn resolve(disk_id: usize) -> Result<Self, ErrorCode> {
-        let base_addr = match disk_id {
-            0 | 1 => ATA_PRIMARY_BASE_ADDRESS,
-            2 | 3 => ATA_SECONDARY_BASE_ADDRESS,
+        let is_primary = is_primary(disk_id)?;
+
+        let base_addr = match is_primary {
+            true => ATA_PRIMARY_BASE_ADDRESS,
+            false => ATA_SECONDARY_BASE_ADDRESS,
             _ => return Err(ErrorCode::DiskNotUs),
         };
 
@@ -205,25 +245,30 @@ impl DiskReader for AtaPio {
             false => ATA_MASTER_IDENTIFY,
         };
 
-        // ATA PIO Identity
-        outb(base_addr + ATA_DRIVE_HEAD, identity);
-
-        // Send the total number of sectors we want to read
-        outb(base_addr + ATA_SECCOUNT, 0);
-
-        // Send more of the LBA
-        outb(base_addr + ATA_LBA_LO, 0);
-        outb(base_addr + ATA_LBA_MID, 0);
-        outb(base_addr + ATA_LBA_HI, 0);
-
-        outb(base_addr + ATA_COMM_REGSTAT, ATA_IDENTITY);
+        let lock = get_lock(disk_id)?;
 
         let mut data = [0; SECTOR_SIZE];
+        let count = {
+            lock.lock();
 
-        let count = poll_read(base_addr, &mut data, 1).map_err(|err| match err {
-            ErrorCode::Io => ErrorCode::DiskNotUs,
-            other => other,
-        })?;
+            // ATA PIO Identity
+            outb(base_addr + ATA_DRIVE_HEAD, identity);
+
+            // Send the total number of sectors we want to read
+            outb(base_addr + ATA_SECCOUNT, 0);
+
+            // Send more of the LBA
+            outb(base_addr + ATA_LBA_LO, 0);
+            outb(base_addr + ATA_LBA_MID, 0);
+            outb(base_addr + ATA_LBA_HI, 0);
+
+            outb(base_addr + ATA_COMM_REGSTAT, ATA_IDENTITY);
+
+            poll_read(base_addr, &mut data, 1).map_err(|err| match err {
+                ErrorCode::Io => ErrorCode::DiskNotUs,
+                other => other,
+            })?
+        };
 
         assert!(count == SECTOR_SIZE);
 

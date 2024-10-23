@@ -8,6 +8,7 @@ use core::convert::TryFrom;
 use core::convert::TryInto;
 use core::mem::size_of;
 use fs::{FileSeekMode, FileStat};
+use spin::RwLock;
 
 use crate::config::MAX_PATH;
 use crate::disk::diskstreamer::DiskStreamer;
@@ -99,6 +100,14 @@ struct FatDirectoryItem {
 }
 
 impl FatDirectoryItem {
+    fn from_u16_slice(slice: &[u16], size: usize) -> Vec<Self> {
+        unsafe {
+            let ptr = slice.as_ptr() as *const Self;
+            let fat_items = core::slice::from_raw_parts(ptr, size);
+            fat_items.to_vec()
+        }
+    }
+
     fn first_cluster(&self) -> u16 {
         self.high_16_bits_first_cluster | self.low_16_bits_first_cluster
     }
@@ -116,7 +125,7 @@ impl FatDirectory {
     fn get_root(
         disk: &Disk,
         private_header: &FatH,
-        directory_stream: &mut DiskStreamer,
+        directory_stream: &DiskStreamer,
     ) -> Result<Self, ErrorCode> {
         let primary_header = &private_header.primary_header;
         let root_dir_sector_pos: usize = (usize::from(primary_header.fat_copies)
@@ -190,13 +199,13 @@ impl FatPrivate {
 
 pub struct Fat16 {
     private: FatPrivate,
-    fds: Vec<FatFileDescriptor>,
+    fds: RwLock<Vec<FatFileDescriptor>>,
     sector_size: usize,
 }
 
 impl Fat16 {
     fn get_directory_entry(
-        &mut self,
+        &self,
         root_directory: Arc<FatDirectory>,
         path: PathPart,
     ) -> Result<FatItem, ErrorCode> {
@@ -220,7 +229,7 @@ impl Fat16 {
     }
 
     fn find_item_in_directory(
-        &mut self,
+        &self,
         directory: &FatDirectory,
         name: &str,
     ) -> Result<FatItem, ErrorCode> {
@@ -235,7 +244,7 @@ impl Fat16 {
     }
 
     fn new_fat_item_for_directory_item(
-        &mut self,
+        &self,
         item: FatDirectoryItem,
     ) -> Result<FatItem, ErrorCode> {
         Ok(match item.attribute.subdirectory() {
@@ -247,11 +256,11 @@ impl Fat16 {
         })
     }
 
-    fn get_first_fat_sector(&mut self) -> u16 {
+    fn get_first_fat_sector(&self) -> u16 {
         self.private.header.primary_header.reserved_sectors
     }
 
-    fn get_fat_entry(&mut self, cluster: u16) -> Result<u16, ErrorCode> {
+    fn get_fat_entry(&self, cluster: u16) -> Result<u16, ErrorCode> {
         let fat_table_position = usize::from(self.get_first_fat_sector()) * self.sector_size;
         self.private
             .fat_read_stream
@@ -265,7 +274,7 @@ impl Fat16 {
     }
 
     fn get_cluster_for_offset(
-        &mut self,
+        &self,
         starting_cluster: u16,
         offset: usize,
         size_of_cluster_bytes: usize,
@@ -285,55 +294,42 @@ impl Fat16 {
         Ok(cluster_to_use)
     }
 
-    fn read_internal_recursively<T: Sized>(
-        &mut self,
+    fn read_internal(
+        &self,
         cluster: u16,
         offset: usize,
         mut total: usize,
-        out: &mut [T],
-        mut idx: usize,
+        out: &mut [u16],
     ) -> Result<(), ErrorCode> {
+        let sector_size = self.sector_size;
         let size_of_cluster_bytes =
-            usize::from(self.private.header.primary_header.sectors_per_cluster) * self.sector_size;
+            usize::from(self.private.header.primary_header.sectors_per_cluster) * sector_size;
         let cluster_to_use = self.get_cluster_for_offset(cluster, offset, size_of_cluster_bytes)?;
 
         let offset_from_cluster = offset % size_of_cluster_bytes;
 
         let starting_sector = self.cluster_to_sector(cluster_to_use);
-        let starting_pos =
-            usize::try_from(starting_sector)? * self.sector_size + offset_from_cluster;
-        let total_to_read = if total > size_of_cluster_bytes {
-            size_of_cluster_bytes
-        } else {
-            total
-        };
+        let starting_pos = usize::try_from(starting_sector)? * sector_size + offset_from_cluster;
 
-        self.private.cluster_read_stream.seek(starting_pos);
+        while total > 0 {
+            let total_to_read = if total > size_of_cluster_bytes {
+                size_of_cluster_bytes
+            } else {
+                total
+            };
 
-        let size = size_of::<T>();
-        let mut buf = Vec::with_capacity(size);
-        *out.get_mut(idx).ok_or(ErrorCode::OutOfBounds)? =
-            self.private.cluster_read_stream.read_into(&mut buf)?;
-        idx += 1;
+            let clrs = &self.private.cluster_read_stream;
+            clrs.seek(starting_pos);
 
-        total -= total_to_read;
-        match total > 0 {
-            true => Ok(self.read_internal_recursively(cluster, offset, total, out, idx)?),
-            false => Ok(()),
+            clrs.read(out, total_to_read)?;
+
+            total -= total_to_read
         }
+
+        Ok(())
     }
 
-    fn read_internal<T: Sized>(
-        &mut self,
-        cluster: u16,
-        offset: usize,
-        total: usize,
-        out: &mut [T],
-    ) -> Result<(), ErrorCode> {
-        self.read_internal_recursively(cluster, offset, total, out, 0)
-    }
-
-    fn load_fat_directory(&mut self, item: &FatDirectoryItem) -> Result<FatDirectory, ErrorCode> {
+    fn load_fat_directory(&self, item: &FatDirectoryItem) -> Result<FatDirectory, ErrorCode> {
         if !item.attribute.subdirectory() {
             return Err(ErrorCode::InvArg);
         }
@@ -343,20 +339,20 @@ impl Fat16 {
         let total_items: usize = get_total_items_for_directory(
             self.sector_size,
             cluster_sector,
-            &mut self.private.directory_stream,
+            &self.private.directory_stream,
         )?;
         let directory_size = total_items * size_of::<FatDirectoryItem>();
 
-        let mut items: Vec<FatDirectoryItem> = Vec::new();
+        let mut items: Vec<u16> = Vec::with_capacity(directory_size);
         self.read_internal(cluster, 0x00, directory_size, &mut items)?;
         Ok(FatDirectory {
-            items,
+            items: FatDirectoryItem::from_u16_slice(&items, directory_size),
             sector_pos: cluster_sector,
             ending_sector_pos: cluster_sector + i32::try_from(directory_size / self.sector_size)?,
         })
     }
 
-    fn cluster_to_sector(&mut self, cluster: u16) -> i32 {
+    fn cluster_to_sector(&self, cluster: u16) -> i32 {
         let ending_sector_pos: i32 = self.private.root_directory.ending_sector_pos;
         let sectors_per_cluster: i32 = self
             .private
@@ -371,26 +367,30 @@ impl Fat16 {
 fn get_total_items_for_directory(
     sector_size: usize,
     directory_start_sector: i32,
-    directory_stream: &mut DiskStreamer,
+    directory_stream: &DiskStreamer,
 ) -> Result<usize, ErrorCode> {
     let mut count: usize = 0;
     let directory_start_sector_usize: usize = directory_start_sector.try_into()?;
     let directory_start_pos = sector_to_absolute(sector_size, directory_start_sector_usize);
-    directory_stream.seek(directory_start_pos);
-    loop {
-        let mut item_buf = [0; size_of::<FatDirectoryItem>()];
-        let item: FatDirectoryItem = directory_stream.read_into(&mut item_buf)?;
 
-        if item.filename[0] == BLANK_RECORD {
-            break;
+    {
+        directory_stream.seek(directory_start_pos);
+        loop {
+            let mut item_buf = [0; size_of::<FatDirectoryItem>()];
+            let item: FatDirectoryItem = directory_stream.read_into(&mut item_buf)?;
+
+            if item.filename[0] == BLANK_RECORD {
+                break;
+            }
+
+            if item.filename[0] == UNUSED {
+                continue;
+            }
+
+            count += 1;
         }
-
-        if item.filename[0] == UNUSED {
-            continue;
-        }
-
-        count += 1;
     }
+
     Ok(count)
 }
 
@@ -457,7 +457,7 @@ impl FileSystem for Fat16 {
     }
 
     fn fopen(
-        &mut self,
+        &self,
         fd: FileDescriptorIndex,
         path: PathPart,
         mode: FileMode,
@@ -470,14 +470,14 @@ impl FileSystem for Fat16 {
 
         let root_item = self.get_directory_entry(root_directory, path)?;
 
-        if self.fds.get(fd).is_some() {
+        if self.fds.read().get(fd).is_some() {
             panic!(
                 "Fat16 fd {} is already assigned, but it's being requested",
                 fd
             );
         }
 
-        self.fds.push(FatFileDescriptor {
+        self.fds.write().push(FatFileDescriptor {
             pos: 0,
             item: Arc::new(root_item),
         });
@@ -488,14 +488,12 @@ impl FileSystem for Fat16 {
         unimplemented!()
     }
 
-    fn fread(
-        &mut self,
-        out: &mut [u16],
-        size: u32,
-        nmemb: u32,
-        fd: usize,
-    ) -> Result<u32, ErrorCode> {
-        let fat_desc = self.fds.get(fd).ok_or(ErrorCode::InvArg)?;
+    fn fread(&self, out: &mut [u16], size: u32, nmemb: u32, fd: usize) -> Result<u32, ErrorCode> {
+        let fds = self.fds.read();
+
+        // FDs start at 1
+        let fat_desc = fds.get(fd - 1).ok_or(ErrorCode::InvArg)?;
+
         let item_binding = Arc::clone(&fat_desc.item);
         let item = match &*item_binding {
             FatItem::File(file) => file,
@@ -525,7 +523,7 @@ impl FileSystem for Fat16 {
 
     fn fs_resolve(disk: &Disk) -> Result<Self, ErrorCode> {
         // Get the fat private header
-        let mut stream = DiskStreamer::new(disk.id)?;
+        let stream = DiskStreamer::new(disk.id)?;
 
         let mut header_buf = [0; size_of::<FatH>()];
         let private_header: FatH = stream.read_into(&mut header_buf)?;
@@ -545,7 +543,7 @@ impl FileSystem for Fat16 {
 
         Ok(Self {
             private: fat_private,
-            fds: Vec::new(),
+            fds: RwLock::new(Vec::new()),
             sector_size: disk.sector_size,
         })
     }
