@@ -8,12 +8,14 @@ use core::convert::TryFrom;
 use core::convert::TryInto;
 use core::mem::size_of;
 use fs::{FileSeekMode, FileStat};
+use hashbrown::HashMap;
 use spin::RwLock;
 
 use crate::config::MAX_PATH;
 use crate::disk::diskstreamer::DiskStreamer;
 use crate::disk::Disk;
 use crate::fs::file::FileDescriptorIndex;
+use crate::fs::file::FileStatFlags;
 use crate::fs::pparser::PathPart;
 use crate::status::ErrorCode;
 use fs::FileMode;
@@ -100,12 +102,10 @@ struct FatDirectoryItem {
 }
 
 impl FatDirectoryItem {
-    fn from_u16_slice(slice: &[u16], size: usize) -> Vec<Self> {
-        unsafe {
-            let ptr = slice.as_ptr() as *const Self;
-            let fat_items = core::slice::from_raw_parts(ptr, size);
-            fat_items.to_vec()
-        }
+    unsafe fn from_u8_slice(slice: &[u8], size: usize) -> Vec<Self> {
+        let ptr = slice.as_ptr() as *const Self;
+        let fat_items = core::slice::from_raw_parts(ptr, size);
+        fat_items.to_vec()
     }
 
     fn first_cluster(&self) -> u16 {
@@ -199,7 +199,7 @@ impl FatPrivate {
 
 pub struct Fat16 {
     private: FatPrivate,
-    fds: RwLock<Vec<FatFileDescriptor>>,
+    fds: RwLock<HashMap<FileDescriptorIndex, FatFileDescriptor>>,
     sector_size: usize,
 }
 
@@ -266,11 +266,11 @@ impl Fat16 {
             .fat_read_stream
             .seek(fat_table_position * usize::from(cluster * FAT_ENTRY_SIZE));
 
-        let mut out: [u16; 1] = [0; 1];
-        let size = size_of::<[u16; 1]>();
+        let mut out: [u8; 2] = [0; 2];
+        let size = size_of::<[u8; 2]>();
         self.private.fat_read_stream.read(&mut out, size)?;
 
-        Ok(out[0])
+        Ok(u16::from_le_bytes(out))
     }
 
     fn get_cluster_for_offset(
@@ -282,7 +282,7 @@ impl Fat16 {
         let mut cluster_to_use = starting_cluster;
         let clusters_ahead = offset / size_of_cluster_bytes;
         for _ in 0..clusters_ahead {
-            let entry = self.get_fat_entry(cluster_to_use)?;
+            let entry: u16 = self.get_fat_entry(cluster_to_use)?;
 
             cluster_to_use = match entry {
                 BLANK_SECTOR | RESERVED | EOF | BAD_SECTOR | BOOT_SECTOR | EXTENDED_BOOT_SECTOR => {
@@ -299,7 +299,7 @@ impl Fat16 {
         cluster: u16,
         offset: usize,
         mut total: usize,
-        out: &mut [u16],
+        out: &mut [u8],
     ) -> Result<(), ErrorCode> {
         let sector_size = self.sector_size;
         let size_of_cluster_bytes =
@@ -343,10 +343,10 @@ impl Fat16 {
         )?;
         let directory_size = total_items * size_of::<FatDirectoryItem>();
 
-        let mut items: Vec<u16> = Vec::with_capacity(directory_size);
+        let mut items: Vec<u8> = Vec::with_capacity(directory_size);
         self.read_internal(cluster, 0x00, directory_size, &mut items)?;
         Ok(FatDirectory {
-            items: FatDirectoryItem::from_u16_slice(&items, directory_size),
+            items: unsafe { FatDirectoryItem::from_u8_slice(&items, directory_size) },
             sector_pos: cluster_sector,
             ending_sector_pos: cluster_sector + i32::try_from(directory_size / self.sector_size)?,
         })
@@ -470,29 +470,50 @@ impl FileSystem for Fat16 {
 
         let root_item = self.get_directory_entry(root_directory, path)?;
 
-        if self.fds.read().get(fd).is_some() {
+        if self.fds.read().get(&fd).is_some() {
             panic!(
                 "Fat16 fd {} is already assigned, but it's being requested",
                 fd
             );
         }
 
-        self.fds.write().push(FatFileDescriptor {
-            pos: 0,
-            item: Arc::new(root_item),
-        });
+        self.fds.write().insert(
+            fd,
+            FatFileDescriptor {
+                pos: 0,
+                item: Arc::new(root_item),
+            },
+        );
         Ok(())
     }
 
     fn fseek(&self, fd: usize, offset: usize, whence: FileSeekMode) -> Result<(), ErrorCode> {
-        unimplemented!()
+        let mut fds = self.fds.write();
+        let descriptor = fds.get_mut(&fd).ok_or(ErrorCode::InvArg)?;
+
+        let item = match &*descriptor.item {
+            FatItem::Directory(_) => return Err(ErrorCode::InvArg),
+            FatItem::File(file) => file,
+        };
+
+        if offset >= item.filesize.try_into()? {
+            return Err(ErrorCode::InvArg);
+        }
+
+        let offset_u32: u32 = u32::try_from(offset)?;
+
+        match whence {
+            FileSeekMode::Set => descriptor.pos = offset_u32,
+            FileSeekMode::Cur => descriptor.pos += offset_u32,
+            FileSeekMode::End => unimplemented!(),
+        }
+        Ok(())
     }
 
-    fn fread(&self, out: &mut [u16], size: u32, nmemb: u32, fd: usize) -> Result<u32, ErrorCode> {
+    fn fread(&self, out: &mut [u8], size: u32, nmemb: u32, fd: usize) -> Result<u32, ErrorCode> {
         let fds = self.fds.read();
 
-        // FDs start at 1
-        let fat_desc = fds.get(fd - 1).ok_or(ErrorCode::InvArg)?;
+        let fat_desc = fds.get(&fd).ok_or(ErrorCode::InvArg)?;
 
         let item_binding = Arc::clone(&fat_desc.item);
         let item = match &*item_binding {
@@ -513,12 +534,29 @@ impl FileSystem for Fat16 {
         Ok(nmemb)
     }
 
-    fn fstat(&self, fd: usize, stat: FileStat) -> Result<(), ErrorCode> {
-        unimplemented!()
+    fn fstat(&self, fd: usize) -> Result<FileStat, ErrorCode> {
+        let fds = self.fds.read();
+
+        let descriptor = fds.get(&fd).ok_or(ErrorCode::InvArg)?;
+        let item = match &*descriptor.item {
+            FatItem::Directory(_) => return Err(ErrorCode::InvArg),
+            FatItem::File(file) => file,
+        };
+
+        let mut flags = FileStatFlags::default();
+        if item.attribute.read_only() {
+            flags.set_read_only(true);
+        }
+
+        Ok(FileStat {
+            filesize: item.filesize,
+            flags,
+        })
     }
 
-    fn fclose(&self, fd: usize) -> Result<(), ErrorCode> {
-        unimplemented!()
+    fn fclose(&self, fd: usize) {
+        let mut fds = self.fds.write();
+        fds.remove(&fd);
     }
 
     fn fs_resolve(disk: &Disk) -> Result<Self, ErrorCode> {
@@ -543,7 +581,7 @@ impl FileSystem for Fat16 {
 
         Ok(Self {
             private: fat_private,
-            fds: RwLock::new(Vec::new()),
+            fds: RwLock::new(HashMap::new()),
             sector_size: disk.sector_size,
         })
     }

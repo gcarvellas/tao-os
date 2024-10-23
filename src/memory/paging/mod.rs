@@ -62,13 +62,6 @@ pub struct PageDirectoryEntry {
     no_execute: bool,
 }
 
-impl PageDirectoryEntry {
-    pub fn allocate_new(flags: Self) -> Result<Self, ErrorCode> {
-        let addr = page_alloc(size_of::<Self>())?;
-        Ok(Self::from((addr as u64) | flags.value))
-    }
-}
-
 type PageDirectoryEntries = [Volatile<PageDirectoryEntry>; PAGING_TOTAL_ENTRIES_PER_TABLE];
 
 #[repr(transparent)]
@@ -77,17 +70,17 @@ struct PageTable {
 }
 
 impl PageTable {
-    fn from(addr: PageAddress) -> Self {
-        let entries = unsafe { &mut *(addr as *mut PageDirectoryEntries) };
+    unsafe fn from(addr: PageAddress) -> Self {
+        let entries = &mut *(addr as *mut PageDirectoryEntries);
         Self { entries }
     }
 
-    fn from_pde(pde: PageDirectoryEntry) -> Self {
+    unsafe fn from_pde(pde: PageDirectoryEntry) -> Self {
         let addr = u64::from(pde.addr() << 12) as PageAddress;
         Self::from(addr)
     }
 
-    fn new() -> Result<Self, ErrorCode> {
+    unsafe fn new() -> Result<Self, ErrorCode> {
         let addr = page_alloc(size_of::<PageDirectoryEntries>())?;
         Ok(Self::from(addr))
     }
@@ -101,14 +94,14 @@ impl PageTable {
         let mut pde = entry.read();
 
         if !pde.present() {
-            let pt = Self::new()?;
+            let pt = unsafe { Self::new()? }; // not tracked by Rust's borrow checker
             pde = PageDirectoryEntry::from(pde.value | flags.value);
             pde.set_addr(u40::new(pt.entries.as_ptr() as u64) >> 12);
             pde.set_present(true);
             entry.write(pde);
         }
 
-        Ok(Self::from_pde(entry.read()))
+        Ok(unsafe { Self::from_pde(entry.read()) })
     }
 }
 
@@ -146,7 +139,7 @@ impl PageMapIndexes {
 /*
  * Manually allocate memory to prevent Rust from freeing pages at random
  */
-fn page_alloc(size: usize) -> Result<PageAddress, ErrorCode> {
+unsafe fn page_alloc(size: usize) -> Result<PageAddress, ErrorCode> {
     Ok(KERNEL_HEAP.zalloc(size)? as PageAddress)
 }
 
@@ -165,7 +158,10 @@ pub struct Paging256TBChunk {
 }
 
 impl Paging256TBChunk {
-    pub fn new() -> Result<Self, ErrorCode> {
+    /*
+     * Memory must be manually freed since it's not tracked by rust's borrow checker
+     */
+    pub unsafe fn new() -> Result<Self, ErrorCode> {
         let plm4 = PageTable::new()?;
 
         let res = Self { plm4 };
@@ -213,12 +209,10 @@ impl Paging256TBChunk {
                 "mov cr3, {0}",
                 in(reg) addr
             }
-
-            {
-                let mut current_page_directory = CURRENT_PAGE_DIRECTORY.lock();
-                *current_page_directory = Some(new);
-            }
         }
+
+        let mut current_page_directory = CURRENT_PAGE_DIRECTORY.lock();
+        *current_page_directory = Some(new);
     }
 
     pub fn map(

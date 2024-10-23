@@ -39,7 +39,7 @@ const ATA_LBA_MID: u16 = 4;
 const ATA_LBA_HI: u16 = 5;
 const ATA_DRIVE_HEAD: u16 = 6;
 const ATA_COMM_REGSTAT: u16 = 7;
-const SECTOR_SIZE: usize = 256;
+const SECTOR_SIZE: usize = 512;
 
 const MAX_POLL_ATTEMPTS: usize = 15;
 
@@ -78,30 +78,56 @@ enum AtaPioModes {
     Ata28,
 }
 
-// Assumes atomicity
-fn poll_read(base_addr: u16, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
+// No lock guarantee makes this unsafe
+unsafe fn poll_read(base_addr: u16) -> Result<(), ErrorCode> {
+    let mut count = 0;
+    loop {
+        if count >= MAX_POLL_ATTEMPTS {
+            return Err(ErrorCode::Io);
+        }
+        let status = AtaPioStatusRegister::from(insb(base_addr + ATA_COMM_REGSTAT));
+        if status.bsy() {
+            continue;
+        }
+        if status.drq() {
+            return Ok(());
+        }
+        if status.df() || status.err() {
+            return Err(ErrorCode::Io);
+        }
+        count += 1;
+    }
+}
+
+// No lock guarantee makes this unsafe
+unsafe fn poll_read_u8(base_addr: u16, out: &mut [u8], total: usize) -> Result<usize, ErrorCode> {
     let mut size = 0;
     for i in 0..total {
-        let mut count = 0;
-        loop {
-            if count >= MAX_POLL_ATTEMPTS {
-                return Err(ErrorCode::Io);
-            }
-            let status = AtaPioStatusRegister::from(insb(base_addr + ATA_COMM_REGSTAT));
-            if status.bsy() {
-                continue;
-            }
-            if status.drq() {
-                break;
-            }
-            if status.df() || status.err() {
-                return Err(ErrorCode::Io);
-            }
-            count += 1;
+        poll_read(base_addr)?;
+
+        // Split the u16 into each of its two values
+        for j in (0..SECTOR_SIZE).step_by(2) {
+            let data = insw(base_addr + ATA_DATA);
+            let [low_byte, high_byte] = data.to_le_bytes();
+            let offset = i * SECTOR_SIZE + j;
+            *out.get_mut(offset).ok_or(ErrorCode::OutOfBounds)? = low_byte;
+            *out.get_mut(offset + 1).ok_or(ErrorCode::OutOfBounds)? = high_byte;
         }
-        for j in 0..SECTOR_SIZE {
-            *out.get_mut(i * SECTOR_SIZE + j)
-                .ok_or(ErrorCode::OutOfBounds)? = insw(base_addr + ATA_DATA);
+        size += SECTOR_SIZE;
+    }
+    Ok(size)
+}
+
+// No lock guarantee makes this unsafe
+unsafe fn poll_read_u16(base_addr: u16, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
+    let mut size = 0;
+    for i in 0..total {
+        poll_read(base_addr)?;
+
+        for j in 0..SECTOR_SIZE / 2 {
+            let data = insw(base_addr + ATA_DATA);
+            let offset = i * SECTOR_SIZE + j;
+            *out.get_mut(offset).ok_or(ErrorCode::OutOfBounds)? = data;
         }
         size += SECTOR_SIZE;
     }
@@ -134,7 +160,7 @@ impl AtaPio {
         }
     }
 
-    fn read28(&self, lba: usize, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
+    fn read28(&self, lba: usize, out: &mut [u8], total: usize) -> Result<usize, ErrorCode> {
         // Select master/slave drive and pass part of the LBA
 
         let lba_h = ((lba >> 28) & 0x0F) | self.select_28;
@@ -157,11 +183,12 @@ impl AtaPio {
             // Read command
             outb(self.base_addr + ATA_COMM_REGSTAT, ATA_28_READ);
 
-            poll_read(self.base_addr, out, total)
+            // This call is safe as long as we have the lock
+            unsafe { poll_read_u8(self.base_addr, out, total) }
         }
     }
 
-    fn read48(&self, lba: usize, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
+    fn read48(&self, lba: usize, out: &mut [u8], total: usize) -> Result<usize, ErrorCode> {
         let lock = get_lock(self.id)?;
 
         {
@@ -201,7 +228,8 @@ impl AtaPio {
             // Read command
             outb(self.base_addr + ATA_COMM_REGSTAT, ATA_48_READ);
 
-            poll_read(self.base_addr, out, total)
+            // This call is safe as long as we have the lock
+            unsafe { poll_read_u8(self.base_addr, out, total) }
         }
     }
 
@@ -235,7 +263,6 @@ impl DiskReader for AtaPio {
         let base_addr = match is_primary {
             true => ATA_PRIMARY_BASE_ADDRESS,
             false => ATA_SECONDARY_BASE_ADDRESS,
-            _ => return Err(ErrorCode::DiskNotUs),
         };
 
         let is_slave = disk_id == 1 || disk_id == 3;
@@ -264,10 +291,13 @@ impl DiskReader for AtaPio {
 
             outb(base_addr + ATA_COMM_REGSTAT, ATA_IDENTITY);
 
-            poll_read(base_addr, &mut data, 1).map_err(|err| match err {
-                ErrorCode::Io => ErrorCode::DiskNotUs,
-                other => other,
-            })?
+            // This call is safe as long as we have the lock
+            unsafe {
+                poll_read_u16(base_addr, &mut data, 1).map_err(|err| match err {
+                    ErrorCode::Io => ErrorCode::DiskNotUs,
+                    other => other,
+                })?
+            }
         };
 
         assert!(count == SECTOR_SIZE);
@@ -300,12 +330,11 @@ impl DiskReader for AtaPio {
         ))
     }
 
-    fn write(&self, lba: usize, data: &mut [u16]) -> Result<(), ErrorCode> {
-        // TODO
+    fn write(&self, lba: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
         unimplemented!("ata write not implemented yet")
     }
 
-    fn read(&self, lba: usize, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
+    fn read(&self, lba: usize, out: &mut [u8], total: usize) -> Result<usize, ErrorCode> {
         match self.get_mode() {
             AtaPioModes::Ata48 => Ok(self.read48(lba, out, total)?),
             AtaPioModes::Ata28 => Ok(self.read28(lba, out, total)?),

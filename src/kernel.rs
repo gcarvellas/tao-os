@@ -59,9 +59,12 @@ use crate::memory::paging::PageAddress;
 use crate::memory::paging::PageDirectoryEntry;
 use crate::memory::paging::Paging256TBChunk;
 use alloc::boxed::Box;
+use alloc::string::String;
 use core::panic::PanicInfo;
+use fs::file::fclose;
 use fs::file::fopen;
 use fs::file::fread;
+use fs::file::fstat;
 use idt::IDT;
 
 #[panic_handler]
@@ -103,7 +106,7 @@ fn test_paging() {
     flags.set_writeable(true);
     flags.set_present(true);
     flags.set_access_from_all(true);
-    let mut chunk = Paging256TBChunk::new().unwrap();
+    let mut chunk = unsafe { Paging256TBChunk::new().unwrap() }; // page is not freed
 
     let ptr = Box::new("No");
     for i in 0..51200 {
@@ -139,13 +142,9 @@ fn test_paging() {
 // TODO use cargo's testing to do this https://os.phil-opp.com/testing/
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
-    {
-        KERNEL_HEAP.init().unwrap();
-    }
+    KERNEL_HEAP.init().unwrap();
 
-    {
-        IDT.load();
-    }
+    IDT.load();
     enable_interrupts();
 
     println!(
@@ -164,7 +163,12 @@ pub extern "C" fn kernel_main() -> ! {
 
     let mut buf = [0; 8];
     fread(&mut buf, 8, 1, fd).expect("Failed to read HELLO.TXT");
-    println!("We read 1:/HELLO.TXT: \"{:?}\"", buf);
+    let result = String::from_utf8(buf.to_vec());
+    println!("We read 1:/HELLO.TXT: \"{:?}\"", result);
+
+    let stats = fstat(fd).expect("failed to stat HELLO.TXT");
+    println!("stats: {:?}", stats);
+    fclose(fd).expect("Failed to close HELLO.TXT");
 
     println!("Testing a kernel panic using Rust's unimplemented! macro.");
 

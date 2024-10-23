@@ -3,6 +3,7 @@ use bilge::bitsize;
 use bilge::prelude::u7;
 use bilge::prelude::Number;
 use bilge::Bitsized;
+use bilge::DebugBits;
 use core::convert::TryFrom;
 use spin::RwLock;
 
@@ -19,9 +20,16 @@ pub type FileDescriptorIndex = usize;
 
 #[repr(C, packed)]
 #[bitsize(8)]
-pub struct FileStat {
+#[derive(Default, DebugBits)]
+pub struct FileStatFlags {
     available: u7,
-    read_only: bool,
+    pub read_only: bool,
+}
+
+#[derive(Debug)]
+pub struct FileStat {
+    pub flags: FileStatFlags,
+    pub filesize: u32,
 }
 
 #[derive(PartialEq)]
@@ -63,14 +71,22 @@ impl FileDescriptor {
         Err(ErrorCode::NoFdAvailable)
     }
 
-    pub fn get(fd: FileDescriptorIndex) -> Result<Arc<Self>, ErrorCode> {
-        FILE_DESCRIPTORS
+    pub fn get(fd: FileDescriptorIndex) -> Result<Option<Arc<Self>>, ErrorCode> {
+        Ok(FILE_DESCRIPTORS
             .read()
             .get(fd - 1) // descriptors start at 1
             .ok_or(ErrorCode::InvArg)?
             .as_ref()
-            .map(Arc::clone)
-            .ok_or(ErrorCode::InvArg)
+            .map(Arc::clone))
+    }
+
+    fn remove(fd: FileDescriptorIndex) {
+        let mut fds = FILE_DESCRIPTORS.write();
+        let desc = match fds.get_mut(fd - 1) {
+            None => return,
+            Some(desc) => desc,
+        };
+        *desc = None;
     }
 }
 
@@ -84,7 +100,7 @@ fn file_get_mode_by_string(mode_str: &str) -> FileMode {
 }
 
 pub fn fread(
-    out: &mut [u16],
+    out: &mut [u8],
     size: u32,
     nmemb: u32,
     fd: FileDescriptorIndex,
@@ -93,7 +109,7 @@ pub fn fread(
         return Err(ErrorCode::InvArg);
     }
 
-    let desc = FileDescriptor::get(fd)?;
+    let desc = FileDescriptor::get(fd)?.ok_or(ErrorCode::InvArg)?;
 
     {
         match &desc.disk.fs {
@@ -101,6 +117,54 @@ pub fn fread(
             Some(fs) => fs.fread(out, size, nmemb, fd)?,
         };
     }
+    Ok(())
+}
+
+pub fn fstat(fd: FileDescriptorIndex) -> Result<FileStat, ErrorCode> {
+    if fd < 1 {
+        return Err(ErrorCode::InvArg);
+    }
+
+    let desc = FileDescriptor::get(fd)?.ok_or(ErrorCode::InvArg)?;
+
+    Ok(match &desc.disk.fs {
+        None => return Err(ErrorCode::NoFs),
+        Some(fs) => fs.fstat(fd)?,
+    })
+}
+
+pub fn fseek(
+    fd: FileDescriptorIndex,
+    offset: usize,
+    whence: FileSeekMode,
+) -> Result<(), ErrorCode> {
+    if fd < 1 {
+        return Err(ErrorCode::InvArg);
+    }
+
+    let desc = FileDescriptor::get(fd)?.ok_or(ErrorCode::InvArg)?;
+
+    match &desc.disk.fs {
+        None => return Err(ErrorCode::NoFs),
+        Some(fs) => fs.fseek(fd, offset, whence)?,
+    };
+
+    Ok(())
+}
+
+pub fn fclose(fd: FileDescriptorIndex) -> Result<(), ErrorCode> {
+    let desc = match FileDescriptor::get(fd)? {
+        None => return Ok(()),
+        Some(desc) => desc,
+    };
+
+    match &desc.disk.fs {
+        None => return Err(ErrorCode::NoFs),
+        Some(fs) => fs.fclose(fd),
+    }
+
+    FileDescriptor::remove(fd);
+
     Ok(())
 }
 

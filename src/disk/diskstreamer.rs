@@ -24,7 +24,7 @@ impl DiskStreamer {
         *self.pos.write() = pos;
     }
 
-    pub fn read(&self, out: &mut [u16], total: usize) -> Result<usize, ErrorCode> {
+    pub fn read(&self, out: &mut [u8], total: usize) -> Result<usize, ErrorCode> {
         let pos = *self.pos.read();
         let sector = pos / SECTOR_SIZE;
         let offset = pos % SECTOR_SIZE;
@@ -59,9 +59,8 @@ impl DiskStreamer {
         Ok(count)
     }
 
-    pub fn read_into<T: Sized>(&self, buf: &mut [u16]) -> Result<T, ErrorCode> {
-        // Buf is a u16 so half the siz
-        let size = size_of::<T>() / 2;
+    pub fn read_into<T: Sized>(&self, buf: &mut [u8]) -> Result<T, ErrorCode> {
+        let size = size_of::<T>();
 
         if self.read(buf, size)? < size {
             return Err(ErrorCode::Io);
@@ -75,7 +74,7 @@ impl DiskStreamer {
         Ok(res)
     }
 
-    pub fn write(&self, data: &mut [u16]) -> Result<(), ErrorCode> {
+    pub fn write(&self, data: &mut [u8]) -> Result<(), ErrorCode> {
         unimplemented!()
     }
 }

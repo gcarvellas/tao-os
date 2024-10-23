@@ -39,7 +39,7 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
 ### Cleanup/Improvements
 - Replace First Fit with Slab Allocation algorithm
-- Clear the neverending backlog of TODO comments
+- Clear the neverending backlog of TODO comments and unimplemented!() macros
 - Paging improvements
 
 ### Minor Cleanup/Improvements
@@ -51,3 +51,4 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 - Update the volatile crate (Replaces Volatile with VolatilePtr)
 - Support colored printing
 - Error checking with cpuid in the bootloader
+- Use proper locking instead of spin locks (lock api)
