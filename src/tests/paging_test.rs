@@ -23,7 +23,8 @@ pub fn paging_test() -> Result<(), ErrorCode> {
 
     log!("Allocating page and mapping...");
     let ptr = Box::new("No");
-    for i in 0..51200 { // 512*512*4
+    for i in 0..51200 {
+        // 512*512*4
         let address = i * 0x1000;
         chunk.set(address as PageAddress, address, flags)?
     }
@@ -46,8 +47,16 @@ pub fn paging_test() -> Result<(), ErrorCode> {
         let c_p1 = ptr_chars.next().unwrap();
         let c_p2 = ptr_chars.next().unwrap();
 
-        assert!(c1 == c_p1 && c1 == 'A', "Expected mapped value to be 'A' but got '{}'", c_p1);
-        assert!(c2 == c_p2 && c2 == 'B', "Expected mapped value to be 'B' but got '{}'", c_p2);
+        assert!(
+            c1 == c_p1 && c1 == 'A',
+            "Expected mapped value to be 'A' but got '{}'",
+            c_p1
+        );
+        assert!(
+            c2 == c_p2 && c2 == 'B',
+            "Expected mapped value to be 'B' but got '{}'",
+            c_p2
+        );
     }
     log!("Successfully tested paging");
     Ok(())
