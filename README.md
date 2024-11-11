@@ -10,7 +10,13 @@ This OS is WIP, but the end goal is to have a working wm, with some basic user p
 - nasm
 - grub
 
-## Running with QEMU
+### Building
+
+Release: `make all`
+Debug: `DEBUG=1 make all`
+Testing: `TESTS=1 make all`
+
+### Running with QEMU
 
 After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 
