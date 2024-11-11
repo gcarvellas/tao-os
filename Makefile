@@ -5,11 +5,18 @@ LINKER_SCRIPT := linker.ld
 DEBUG ?= 0
 TESTS ?= 0
 
+ARCH ?= x86_64
 RUST_FLAGS = +nightly
 ASM_FLAGS = -f elf64
 LINKER_FLAGS = -m elf_x86_64 -nostdlib
 CARGO_BUILD_MODE :=
 TARGET_DIR := 
+
+ifeq ($(ARCH),x86_64)
+    $(info Building for architecture: $(ARCH))
+else
+    $(error ARCH $(ARCH) is not supported)
+endif
 
 ifeq ($(TESTS), 1)
 	CARGO_BUILD_MODE += -F integration
@@ -25,8 +32,8 @@ else
 	TARGET_DIR := target/x86_64-unknown-none/release
 endif
 
-ASMSOURCES := $(shell find $(SRCDIR) -name '*.asm')
-OBJFILES := $(patsubst $(SRCDIR)/%.asm, $(BUILDDIR)/%.o, $(ASMSOURCES))
+ASMSOURCES := $(shell find $(SRCDIR)/arch/$(ARCH) -name '*.asm')
+OBJFILES := $(patsubst $(SRCDIR)/arch/$(ARCH)/%.asm, $(BUILDDIR)/%.o, $(ASMSOURCES))
 
 RUST_KERNEL_OBJ  := $(BUILDDIR)/kernel.o
 KERNEL_ELF  := $(BUILDDIR)/kernel.elf
@@ -39,7 +46,7 @@ all: $(KERNEL_ELF)
 	cp ./grub.cfg $(ISODIR)/boot/grub/
 	grub-mkrescue -o $(BUILDDIR)/tao-os.iso $(ISODIR)
 
-$(BUILDDIR)/%.o: $(SRCDIR)/%.asm
+$(BUILDDIR)/%.o: $(SRCDIR)/arch/$(ARCH)/%.asm
 	mkdir -p $(dir $@)
 	nasm $(ASM_FLAGS) $< -o $@
 

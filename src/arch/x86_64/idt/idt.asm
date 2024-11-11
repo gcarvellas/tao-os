@@ -4,7 +4,7 @@ extern no_interrupt_handler
 global int20h
 global no_interrupt
 
-%include "./src/asm/macros.asm"
+%include "./src/arch/x86_64/macros.asm"
 
 no_interrupt:
     pushaq

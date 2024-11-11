@@ -1,4 +1,6 @@
-use crate::io::isr::outb;
+#[cfg(target_arch = "x86_64")]
+use crate::arch::x86_64::io::isr::outb;
+
 use crate::println;
 use core::fmt::Arguments;
 use spin::Lazy;

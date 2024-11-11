@@ -1,6 +1,6 @@
-use crate::memory::paging::PageAddress;
-use crate::memory::paging::PageDirectoryEntry;
-use crate::memory::paging::Paging256TBChunk;
+#[cfg(target_arch = "x86_64")]
+use crate::arch::x86_64::paging::{PageAddress, PageDirectoryEntry, Paging256TBChunk};
+
 use crate::println;
 use crate::status::ErrorCode;
 use alloc::boxed::Box;

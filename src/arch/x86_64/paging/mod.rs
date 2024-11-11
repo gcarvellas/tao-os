@@ -7,14 +7,13 @@
  */
 
 extern crate volatile;
+use crate::memory::heap::KERNEL_HEAP;
 use crate::status::ErrorCode;
 use bilge::prelude::*;
 use core::convert::TryFrom;
 use core::{arch::asm, mem::size_of};
 use spin::Mutex;
 use volatile::Volatile;
-
-use super::heap::KERNEL_HEAP;
 
 /*
  * Each page table contains 512 8-byte entries

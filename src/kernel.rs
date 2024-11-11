@@ -48,10 +48,10 @@
 #![warn(clippy::declare_interior_mutable_const)]
 #![warn(clippy::borrow_interior_mutable_const)]
 
+mod arch;
 mod config;
 mod disk;
 mod fs;
-mod idt;
 mod io;
 mod memory;
 mod status;
@@ -64,12 +64,15 @@ extern crate bilge;
 extern crate hashbrown;
 extern crate spin;
 extern crate volatile;
-use crate::idt::disable_interrupts;
-use crate::idt::enable_interrupts;
+
+#[cfg(target_arch = "x86_64")]
+use crate::arch::x86_64::{
+    idt::{disable_interrupts, enable_interrupts, IDT},
+    io::isr::hault,
+};
+
 use crate::memory::heap::KERNEL_HEAP;
 use core::panic::PanicInfo;
-use idt::IDT;
-use io::isr::hault;
 
 #[cfg(not(feature = "integration"))]
 fn on_panic() -> ! {

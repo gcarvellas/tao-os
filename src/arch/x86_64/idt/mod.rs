@@ -7,9 +7,11 @@
 use spin::Lazy;
 use static_assertions::const_assert_eq;
 
-use crate::{config::TOTAL_INTERRUPTS, io::isr::outb, status::ErrorCode};
+use crate::{config::TOTAL_INTERRUPTS, status::ErrorCode};
 use core::arch::asm;
 use core::mem::size_of;
+
+use super::io::isr::outb;
 
 pub static IDT: Lazy<Idt> = Lazy::new(|| Idt::new().expect("Failed to initialize IDT"));
 

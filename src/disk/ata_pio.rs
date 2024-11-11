@@ -8,11 +8,10 @@ use bilge::prelude::*;
 use core::convert::TryFrom;
 use spin::{Lazy, Mutex};
 
-use crate::{
-    disk::diskreader::DiskReader,
-    io::isr::{insb, insw, outb},
-    status::ErrorCode,
-};
+#[cfg(target_arch = "x86_64")]
+use crate::arch::x86_64::io::isr::{insb, insw, outb};
+
+use crate::{disk::diskreader::DiskReader, status::ErrorCode};
 
 use super::DiskId;
 
