@@ -2,15 +2,24 @@
 name = "tao-os"
 version = "0.0.1"
 authors = ["gcarvellas"]
+edition = "2021"
 
-[workspace]
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
 
 [dependencies]
 bilge = "0.2.0"
 hashbrown = "0.15.0"
 spin = "0.9.8"
+static_assertions = "1.1.0"
 volatile = "0.2.6"
 
 [lib]
-name = "kernel"
+path = "src/kernel.rs"
 crate-type = ["staticlib"]
+
+[features]
+integration = []

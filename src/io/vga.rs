@@ -63,9 +63,9 @@ struct ScreenChar {
 }
 
 impl VgaDisplay {
-    fn backspace(&mut self) -> Result<(), ErrorCode> {
+    fn backspace(&mut self) {
         if self.row == 0 && self.col == 0 {
-            return Ok(());
+            return;
         }
         if self.col == 0 {
             self.row -= 1;
@@ -79,44 +79,37 @@ impl VgaDisplay {
             self.row,
             ' ',
             ColorCode::new(Color::White, Color::Black),
-        )?;
+        );
 
         self.col -= 1;
-        Ok(())
     }
-    fn putchar(&mut self, x: usize, y: usize, c: char, color: ColorCode) -> Result<(), ErrorCode> {
-        self.buffer
-            .addr
-            .get_mut(y)
-            .ok_or(ErrorCode::OutOfBounds)?
-            .get_mut(x)
-            .ok_or(ErrorCode::OutOfBounds)?
-            .write(ScreenChar {
-                ascii_character: c as u8,
-                color_code: color,
-            });
-        Ok(())
+    fn putchar(&mut self, x: usize, y: usize, c: char, color: ColorCode) {
+        self.buffer.addr[y][x].write(ScreenChar {
+            ascii_character: c as u8,
+            color_code: color,
+        });
     }
-    fn clear(&mut self) -> Result<(), ErrorCode> {
+    fn clear(&mut self) {
         for y in 0..VGA_HEIGHT {
             for x in 0..VGA_WIDTH {
-                self.putchar(x, y, ' ', ColorCode::new(Color::White, Color::Black))?;
+                self.putchar(x, y, ' ', ColorCode::new(Color::White, Color::Black));
             }
         }
         self.row = 0;
         self.col = 0;
-        Ok(())
     }
 
     pub fn new() -> Result<Self, ErrorCode> {
         let mut display = Self {
             // TODO this will not work with monochrome monitors since their address is 0xB0000
             // See https://wiki.osdev.org/Detecting_Colour_and_Monochrome_Monitors
+            // SAFETY:
+            // 0xb8000 is the VGA buffer as defined by the bios
             buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
             row: 0,
             col: 0,
         };
-        display.clear()?;
+        display.clear();
 
         Ok(display)
     }
@@ -140,7 +133,7 @@ impl Write for VgaDisplay {
             }
             '\x08' => {
                 // TODO is this backspace?
-                self.backspace().map_err(|_| core::fmt::Error)?;
+                self.backspace();
                 Ok(())
             }
             c => {
@@ -150,11 +143,13 @@ impl Write for VgaDisplay {
                     self.row,
                     c,
                     ColorCode::new(Color::White, Color::Black),
-                )
-                .map_err(|_| core::fmt::Error)?;
+                );
 
                 self.col += 1;
                 if self.col >= VGA_WIDTH {
+                    if self.row >= VGA_HEIGHT {
+                        unimplemented!("TODO support scrolling");
+                    }
                     self.col = 0;
                     self.row += 1;
                 }

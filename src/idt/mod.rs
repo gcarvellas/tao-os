@@ -5,10 +5,10 @@
  */
 
 use spin::Lazy;
+use static_assertions::const_assert_eq;
 
 use crate::{config::TOTAL_INTERRUPTS, io::isr::outb, status::ErrorCode};
 use core::arch::asm;
-use core::convert::TryFrom;
 use core::mem::size_of;
 
 pub static IDT: Lazy<Idt> = Lazy::new(|| Idt::new().expect("Failed to initialize IDT"));
@@ -20,27 +20,36 @@ extern "C" {
 
 #[no_mangle]
 fn int20h_handler() {
-    outb(0x20, 0x20);
+    // Safety: expected behavior
+    unsafe { master_pic_ack() };
 }
 
 #[no_mangle]
 fn no_interrupt_handler() {
+    // Safety: expected behavior
+    unsafe { master_pic_ack() };
+}
+
+#[inline(always)]
+unsafe fn master_pic_ack() {
     outb(0x20, 0x20);
 }
 
-pub fn enable_interrupts() {
-    unsafe {
-        asm! {
-            "sti"
-        }
+/// SAFETY:
+///
+/// If initializers aren't setup properly, interrupts will cause unexpected behavior
+pub unsafe fn enable_interrupts() {
+    asm! {
+        "sti"
     }
 }
 
-pub fn disable_interrupts() {
-    unsafe {
-        asm! {
-            "cli"
-        }
+/// SAFETY:
+///
+/// Ensure that this is properly re-enabled or else most hardware won't work
+pub unsafe fn disable_interrupts() {
+    asm! {
+        "cli"
     }
 }
 
@@ -72,9 +81,12 @@ impl IdtDesc {
         // Assumes selector, zero, and type_addr
         // are set in IdtDesc::default()
         let address = (interrupt_function as *const ()) as u64;
-        self.offset_1 = u16::try_from(address & 0xFFFF)?;
-        self.offset_2 = u16::try_from((address >> 16) & 0xFFFF)?;
-        self.offset_3 = u32::try_from(address >> 32)?;
+
+        let adr_bytes = address.to_le_bytes();
+        self.offset_1 = u16::from_le_bytes([adr_bytes[0], adr_bytes[1]]);
+        self.offset_2 = u16::from_le_bytes([adr_bytes[2], adr_bytes[3]]);
+        self.offset_3 =
+            u32::from_le_bytes([adr_bytes[4], adr_bytes[5], adr_bytes[6], adr_bytes[7]]);
         Ok(())
     }
 }
@@ -87,10 +99,10 @@ struct IdtrDesc {
 
 impl IdtrDesc {
     fn new(idt_descriptors: *const IdtDesc) -> Result<Self, ErrorCode> {
-        let limit = u16::try_from(size_of::<[IdtDesc; TOTAL_INTERRUPTS]>() - 1)?;
+        const_assert_eq!(size_of::<[IdtDesc; TOTAL_INTERRUPTS]>() - 1, 4095);
 
         Ok(Self {
-            limit,
+            limit: 4095,
             base: idt_descriptors as u64,
         })
     }

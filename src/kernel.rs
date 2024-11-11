@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+// Clippy
 #![deny(clippy::cast_lossless)]
 #![deny(clippy::cast_possible_truncation)]
 #![deny(clippy::cast_precision_loss)]
@@ -9,7 +10,6 @@
 #![deny(clippy::default_trait_access)]
 #![deny(clippy::doc_markdown)]
 #![deny(clippy::fallible_impl_from)]
-#![deny(clippy::indexing_slicing)]
 #![deny(clippy::linkedlist)]
 #![deny(clippy::match_same_arms)]
 #![deny(clippy::maybe_infinite_iter)]
@@ -34,9 +34,17 @@
 #![deny(clippy::needless_range_loop)]
 #![deny(clippy::declare_interior_mutable_const)]
 #![deny(clippy::nonminimal_bool)]
-#![allow(clippy::mut_from_ref)] // Requried for Heap get_table
-
-// Required for AtomicPtr
+#![deny(clippy::manual_assert)]
+#![deny(clippy::missing_asserts_for_indexing)]
+#![deny(clippy::undocumented_ansafe_blocks)]
+/*
+ * Clippy: required for Heap get_table
+ * TODO: Fix this if possible
+ */
+#![allow(clippy::mut_from_ref)]
+/*
+ * Clippy: required for AtomicPtr
+ */
 #![warn(clippy::declare_interior_mutable_const)]
 #![warn(clippy::borrow_interior_mutable_const)]
 
@@ -47,6 +55,10 @@ mod idt;
 mod io;
 mod memory;
 mod status;
+
+#[cfg(feature = "integration")]
+mod tests;
+
 extern crate alloc;
 extern crate bilge;
 extern crate hashbrown;
@@ -55,21 +67,21 @@ extern crate volatile;
 use crate::idt::disable_interrupts;
 use crate::idt::enable_interrupts;
 use crate::memory::heap::KERNEL_HEAP;
-use crate::memory::paging::PageAddress;
-use crate::memory::paging::PageDirectoryEntry;
-use crate::memory::paging::Paging256TBChunk;
-use alloc::boxed::Box;
-use alloc::string::String;
 use core::panic::PanicInfo;
-use fs::file::fclose;
-use fs::file::fopen;
-use fs::file::fread;
-use fs::file::fstat;
 use idt::IDT;
+use io::isr::hault;
+
+#[cfg(not(feature = "integration"))]
+fn on_panic() -> ! {
+    hault();
+}
 
 #[panic_handler]
 fn panic(panic_info: &PanicInfo) -> ! {
-    disable_interrupts();
+    // Safety: Stop all hardware asap during a panic
+    unsafe {
+        disable_interrupts();
+    }
     println!("Kernel Panic! :( \n");
     let args = panic_info.message();
     println!("Message: {}", args);
@@ -84,95 +96,37 @@ fn panic(panic_info: &PanicInfo) -> ! {
         println!("Location: Unknown");
     }
 
-    if let Some(payload) = panic_info.payload().downcast_ref::<&str>() {
-        println!("Payload: {}", payload);
-    } else {
-        println!("Payload: Unknown");
-    }
+    #[cfg(not(feature = "integration"))]
+    on_panic();
 
-    loop {}
-}
-
-fn test_malloc() {
+    #[cfg(feature = "integration")]
     {
-        let tmp = Box::new(42);
-        println!("This is on the heap: {}.", tmp);
+        use tests::on_panic;
+        on_panic();
     }
 }
 
-fn test_paging() {
-    println!("Creating a new paging chunk");
-    let mut flags = PageDirectoryEntry::default();
-    flags.set_writeable(true);
-    flags.set_present(true);
-    flags.set_access_from_all(true);
-    let mut chunk = unsafe { Paging256TBChunk::new().unwrap() }; // page is not freed
-
-    let ptr = Box::new("No");
-    for i in 0..51200 {
-        // 512*512*4
-        let address = i * 0x1000;
-        if address == 0x1000 {
-            chunk
-                .set(address as PageAddress, ptr.as_ptr() as u64 | 0x7, flags)
-                .unwrap();
-        } else {
-            chunk.set(address as PageAddress, address, flags).unwrap();
-        }
-    }
-
-    // TODO once chunk.switch() is called, the main kernel page is lost
-    Paging256TBChunk::switch(chunk);
-    println!("After switch");
-
-    let ptr2 = 0x1000 as *mut char;
-    unsafe {
-        *ptr2 = 'A';
-        *(ptr2.offset(1)) = 'B';
-    }
-    unsafe {
-        let c1 = core::ptr::read(ptr2);
-        let c2 = core::ptr::read(ptr2.add(1));
-        assert!(c1 == *ptr2);
-        assert!(c2 == *(ptr2.offset(1)));
-    }
-    println!("Paging works!");
-}
-
-// TODO use cargo's testing to do this https://os.phil-opp.com/testing/
+#[cfg(feature = "integration")]
 #[no_mangle]
 pub extern "C" fn kernel_main() -> ! {
-    KERNEL_HEAP.init().unwrap();
+    use tests::test_main;
+
+    test_main();
+}
+
+pub fn kernel_init() {
+    KERNEL_HEAP
+        .init()
+        .expect("Failed to initialize kernel heap");
 
     IDT.load();
-    enable_interrupts();
+    // Safety: initializers above will properly handle interrupts
+    unsafe { enable_interrupts() };
+}
 
-    println!(
-        "This is currently using the rust println! macro. {}",
-        "Hello World"
-    );
-
-    test_malloc();
-    println!("Successfully deallocated memory.");
-
-    test_paging();
-
-    println!("Attempting to open 1:/HELLO.TXT");
-    let fd = fopen("1:/HELLO.TXT", "r").expect("Failed to open HELLO.TXT");
-    println!("We opened 1:/HELLO.TXT at fd {}", fd);
-
-    let mut buf = [0; 8];
-    fread(&mut buf, 8, 1, fd).expect("Failed to read HELLO.TXT");
-    let result = String::from_utf8(buf.to_vec());
-    println!("We read 1:/HELLO.TXT: \"{:?}\"", result);
-
-    let stats = fstat(fd).expect("failed to stat HELLO.TXT");
-    println!("stats: {:?}", stats);
-    fclose(fd).expect("Failed to close HELLO.TXT");
-
-    println!("Testing a kernel panic using Rust's unimplemented! macro.");
-
+#[cfg(not(feature = "integration"))]
+#[no_mangle]
+pub extern "C" fn kernel_main() -> ! {
+    kernel_init();
     unimplemented!();
-
-    //loop { }
 }

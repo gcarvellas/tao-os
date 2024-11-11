@@ -1,10 +1,10 @@
 use self::fat::fat16::Fat16;
 use self::file::FileSeekMode;
+use crate::fs::file::FileDescriptorIndex;
+use crate::fs::file::FileMode;
+use crate::fs::file::FileStat;
+use crate::fs::pparser::PathPart;
 use alloc::boxed::Box;
-use fs::file::FileDescriptorIndex;
-use fs::file::FileMode;
-use fs::file::FileStat;
-use fs::pparser::PathPart;
 
 use crate::{disk::Disk, status::ErrorCode};
 
@@ -29,12 +29,12 @@ pub trait FileSystem: Send + Sync {
     fn fread(
         &self,
         out: &mut [u8],
-        size: u32,
-        nmemb: u32,
+        size: usize,
+        nmemb: usize,
         fd: FileDescriptorIndex,
-    ) -> Result<u32, ErrorCode>;
+    ) -> Result<usize, ErrorCode>;
     fn fstat(&self, fd: FileDescriptorIndex) -> Result<FileStat, ErrorCode>;
-    fn fclose(&self, fd: FileDescriptorIndex) -> ();
+    fn fclose(&self, fd: FileDescriptorIndex);
     fn fs_resolve(disk: &Disk) -> Result<Self, ErrorCode>
     where
         Self: Sized;

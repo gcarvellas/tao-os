@@ -13,5 +13,7 @@ pub const HEAP_TABLE_ADDRESS: AtomicPtr<u8> = AtomicPtr::new(0x00007E00 as *mut 
 
 pub const TOTAL_INTERRUPTS: usize = 256;
 pub const MAX_PATH: usize = 108;
-pub const SECTOR_SIZE: usize = 512;
+pub const SECTOR_SIZE: u16 = 512;
 pub const MAX_FILE_DESCRIPTORS: usize = 512;
+
+pub const TOTAL_GDT_SEGMENTS: usize = 10;

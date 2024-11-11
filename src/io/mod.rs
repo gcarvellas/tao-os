@@ -5,6 +5,10 @@ use core::fmt::Arguments;
 
 use self::vga::SCREEN;
 
+/*
+ * Testing using serial printing
+ */
+#[cfg(not(feature = "integration"))]
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ($crate::io::_print(format_args!($($arg)*)));
@@ -19,5 +23,5 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _print(args: Arguments) {
     use core::fmt::Write;
-    SCREEN.lock().write_fmt(args).unwrap();
+    SCREEN.lock().write_fmt(args).expect("Failed to print");
 }

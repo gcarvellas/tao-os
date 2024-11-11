@@ -40,3 +40,9 @@ jobs:
 
     - name: Build
       run: make all
+
+    - name: Tests
+      run: |
+        make clean
+        TESTS=1 make all
+        bash test_runner.sh

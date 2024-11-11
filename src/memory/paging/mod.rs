@@ -9,19 +9,20 @@
 extern crate volatile;
 use crate::status::ErrorCode;
 use bilge::prelude::*;
-use core::convert::{TryFrom, TryInto};
+use core::convert::TryFrom;
 use core::{arch::asm, mem::size_of};
 use spin::Mutex;
 use volatile::Volatile;
-use KERNEL_HEAP;
+
+use super::heap::KERNEL_HEAP;
 
 /*
  * Each page table contains 512 8-byte entries
  */
 const PAGING_TOTAL_ENTRIES_PER_TABLE: usize = 512;
-const PAGING_PAGE_SIZE: usize = PAGING_TOTAL_ENTRIES_PER_TABLE * size_of::<usize>();
+const PAGING_PAGE_SIZE: usize = PAGING_TOTAL_ENTRIES_PER_TABLE * size_of::<u64>();
 
-pub type PageAddress = *mut usize;
+pub type PageAddress = *mut u64;
 
 static CURRENT_PAGE_DIRECTORY: Mutex<Option<Paging256TBChunk>> = Mutex::new(None);
 
@@ -70,38 +71,50 @@ struct PageTable {
 }
 
 impl PageTable {
+    /// # Safety
+    ///
+    /// The `PageDirectoryEntry` must be a higher page table
     unsafe fn from(addr: PageAddress) -> Self {
         let entries = &mut *(addr as *mut PageDirectoryEntries);
         Self { entries }
     }
 
+    /// # Safety
+    ///
+    /// The `PageDirectoryEntry` must be a higher page table
     unsafe fn from_pde(pde: PageDirectoryEntry) -> Self {
         let addr = u64::from(pde.addr() << 12) as PageAddress;
         Self::from(addr)
     }
 
+    /// # Safety
+    ///
+    /// Memory must be manually freed since it's not tracked by rust's borrow checker
     unsafe fn new() -> Result<Self, ErrorCode> {
         let addr = page_alloc(size_of::<PageDirectoryEntries>())?;
         Ok(Self::from(addr))
     }
 
-    fn get_pt_or_insert(
+    /// # Safety
+    ///
+    /// Be certain that this is a page table entry, not a page entry
+    unsafe fn get_pt_or_insert(
         &mut self,
         idx: usize,
         flags: PageDirectoryEntry,
     ) -> Result<Self, ErrorCode> {
-        let entry = self.entries.get_mut(idx).ok_or(ErrorCode::OutOfBounds)?;
+        let entry = &mut self.entries[idx];
         let mut pde = entry.read();
 
         if !pde.present() {
-            let pt = unsafe { Self::new()? }; // not tracked by Rust's borrow checker
+            let pt = Self::new()?; // not tracked by Rust's borrow checker
             pde = PageDirectoryEntry::from(pde.value | flags.value);
             pde.set_addr(u40::new(pt.entries.as_ptr() as u64) >> 12);
             pde.set_present(true);
             entry.write(pde);
         }
 
-        Ok(unsafe { Self::from_pde(entry.read()) })
+        Ok(Self::from_pde(entry.read()))
     }
 }
 
@@ -136,9 +149,9 @@ impl PageMapIndexes {
     }
 }
 
-/*
- * Manually allocate memory to prevent Rust from freeing pages at random
- */
+/// # Safety
+///
+/// Memory must be manually freed since it's not tracked by rust's borrow checker
 unsafe fn page_alloc(size: usize) -> Result<PageAddress, ErrorCode> {
     Ok(KERNEL_HEAP.zalloc(size)? as PageAddress)
 }
@@ -158,9 +171,9 @@ pub struct Paging256TBChunk {
 }
 
 impl Paging256TBChunk {
-    /*
-     * Memory must be manually freed since it's not tracked by rust's borrow checker
-     */
+    /// # Safety
+    ///
+    /// Memory must be manually freed since it's not tracked by rust's borrow checker
     pub unsafe fn new() -> Result<Self, ErrorCode> {
         let plm4 = PageTable::new()?;
 
@@ -180,35 +193,34 @@ impl Paging256TBChunk {
         }
         let idx = PageMapIndexes::from(v_addr);
 
-        let mut plm3 = self.plm4.get_pt_or_insert(idx.pdp_i, flags)?;
-        let mut plm2 = plm3.get_pt_or_insert(idx.pd_i, flags)?;
-        let plm1 = plm2.get_pt_or_insert(idx.pt_i, flags)?;
+        // SAFETY:
+        // It is known that these are page table entries, not page entries
+        let plm1 = unsafe {
+            let mut plm3 = self.plm4.get_pt_or_insert(idx.pdp_i, flags)?;
+            let mut plm2 = plm3.get_pt_or_insert(idx.pd_i, flags)?;
+            plm2.get_pt_or_insert(idx.pt_i, flags)?
+        };
 
-        let mut pde = plm1
-            .entries
-            .get(idx.p_i)
-            .ok_or(ErrorCode::OutOfBounds)?
-            .read();
+        let mut pde = plm1.entries[idx.p_i].read();
 
         pde = PageDirectoryEntry::from(pde.value | flags.value);
         pde.set_addr(u40::new(val >> 12));
         pde.set_present(true);
 
-        plm1.entries
-            .get_mut(idx.p_i)
-            .ok_or(ErrorCode::OutOfBounds)?
-            .write(pde);
+        plm1.entries[idx.p_i].write(pde);
 
         Ok(())
     }
 
-    pub fn switch(new: Self) {
+    /// # Safety
+    ///
+    /// Ensure that pages are properly allocated
+    pub unsafe fn switch(new: Self) {
         let addr = new.plm4.entries.as_ptr();
-        unsafe {
-            asm! {
-                "mov cr3, {0}",
-                in(reg) addr
-            }
+
+        asm! {
+            "mov cr3, {0}",
+            in(reg) addr
         }
 
         let mut current_page_directory = CURRENT_PAGE_DIRECTORY.lock();
@@ -273,11 +285,10 @@ impl Paging256TBChunk {
     ) -> Result<PageAddress, ErrorCode> {
         let aligned_v_addr = align_to_lower_page(v_addr);
 
-        let difference = (v_addr as usize).saturating_sub(aligned_v_addr as usize);
-
+        let difference: u64 = (v_addr as u64) - (aligned_v_addr as u64);
         let pde = self.get_or_insert(aligned_v_addr, flags)?;
-        let pde_val_usize: usize = pde.value.try_into()?;
-        Ok((pde_val_usize + difference) as PageAddress)
+
+        Ok((difference + pde.value) as PageAddress)
     }
 
     fn get_or_insert(
@@ -287,16 +298,16 @@ impl Paging256TBChunk {
     ) -> Result<PageDirectoryEntry, ErrorCode> {
         let idx = PageMapIndexes::from(v_addr);
 
-        let entry = self
-            .plm4
-            .get_pt_or_insert(idx.pdp_i, flags)?
-            .get_pt_or_insert(idx.pd_i, flags)?
-            .get_pt_or_insert(idx.pt_i, flags)?
-            .entries
-            .get(idx.p_i)
-            .ok_or(ErrorCode::OutOfBounds)?
-            .read();
+        // SAFETY:
+        // It is known that these are page table entries, not page entries
+        let entries = unsafe {
+            self.plm4
+                .get_pt_or_insert(idx.pdp_i, flags)?
+                .get_pt_or_insert(idx.pd_i, flags)?
+                .get_pt_or_insert(idx.pt_i, flags)?
+                .entries
+        };
 
-        Ok(entry)
+        Ok(entries[idx.p_i].read())
     }
 }

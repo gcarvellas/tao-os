@@ -14,7 +14,6 @@ use core::convert::TryFrom;
 
 use self::volatile::Volatile;
 use core::alloc::{GlobalAlloc, Layout};
-use core::convert::TryInto;
 use core::sync::atomic::{AtomicPtr, Ordering}; // TODO is AtomicPtr necessary? If so, this needs to
                                                // be added to the paging implementation
 use crate::config::{HEAP_ADDRESS, HEAP_BLOCK_SIZE, HEAP_SIZE_BYTES, HEAP_TABLE_ADDRESS};
@@ -94,6 +93,7 @@ impl Heap {
 
     pub fn init(&self) -> Result<(), ErrorCode> {
         let start = HEAP_ADDRESS;
+        // SAFETY: This doesn't overflow
         let end =
             AtomicPtr::new(unsafe { HEAP_ADDRESS.load(Ordering::Relaxed).add(HEAP_SIZE_BYTES) });
 
@@ -130,17 +130,17 @@ impl Heap {
      */
     fn get_start_block(&self, total_blocks: usize) -> Result<usize, ErrorCode> {
         let mut curr_block = 0;
-        let mut start_block: isize = -1;
+        let mut start_block: Option<usize> = None;
         let table = self.get_table();
         for (idx, entry) in table.entries.iter_mut().enumerate() {
             if entry.read().is_taken() {
                 curr_block = 0;
-                start_block = -1;
+                start_block = None;
                 continue;
             }
 
-            if start_block == -1 {
-                start_block = idx.try_into()?;
+            if start_block.is_none() {
+                start_block = Some(idx);
             }
 
             curr_block += 1;
@@ -150,14 +150,15 @@ impl Heap {
             }
         }
 
-        if start_block == -1 {
-            return Err(ErrorCode::NoMem);
+        match start_block {
+            None => Err(ErrorCode::NoMem),
+            Some(res) => Ok(res),
         }
-        let res: usize = start_block.try_into()?;
-        Ok(res)
     }
 
     fn get_table(&self) -> &mut HeapTable {
+        // SAFETY:
+        // table_addr was previously initialized as the correct size
         unsafe { &mut *(self.table_addr.load(Ordering::Relaxed) as *mut HeapTable) }
     }
 
@@ -173,11 +174,7 @@ impl Heap {
 
         let table = self.get_table();
         for i in start_block..=end_block {
-            table
-                .entries
-                .get_mut(i)
-                .ok_or(ErrorCode::OutOfBounds)?
-                .write(entry);
+            table.entries[i].write(entry);
             entry = HeapBlockTableEntry::default();
             entry.set_is_taken(true);
             if end_block > 0 && i != end_block - 1 {
@@ -216,6 +213,8 @@ impl Heap {
     pub fn zalloc(&self, size: usize) -> Result<*mut u8, ErrorCode> {
         let ptr = self.malloc(size)?;
 
+        // SAFETY:
+        // Malloc guarantees alignment and ptr validity
         unsafe {
             ptr::write_bytes(ptr, 0, size);
         }
@@ -230,9 +229,10 @@ impl Heap {
     }
 }
 
-/*
- * Setup to use the heap as a global allocator
- */
+// Setup to use the heap as a global allocator
+//
+// SAFETY:
+// see core::alloc::GlobalAlloc # Safety
 unsafe impl GlobalAlloc for Heap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         self.malloc(layout.size())

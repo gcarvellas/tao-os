@@ -1,5 +1,5 @@
+use crate::config::MAX_PATH;
 use crate::status::ErrorCode;
-use config::MAX_PATH;
 use core::str::Split;
 
 pub type PathPart<'a> = Split<'a, char>;

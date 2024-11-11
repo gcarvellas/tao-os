@@ -12,16 +12,17 @@ use crate::{
     status::ErrorCode,
 };
 
-static DISKS: Lazy<RwLock<HashMap<usize, Arc<Disk>>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+static DISKS: Lazy<RwLock<HashMap<DiskId, Arc<Disk>>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+pub type DiskId = u32;
 
 pub struct Disk {
-    pub id: usize,
-    pub sector_size: usize,
+    pub id: DiskId,
+    pub sector_size: u16,
     pub fs: Option<Box<dyn FileSystem>>,
 }
 
 impl Disk {
-    fn new(id: usize) -> Result<Self, ErrorCode> {
+    fn new(id: u32) -> Result<Self, ErrorCode> {
         let mut disk = Self {
             id,
             sector_size: SECTOR_SIZE,
@@ -34,7 +35,7 @@ impl Disk {
         Ok(disk)
     }
 
-    pub fn get(id: usize) -> Result<Arc<Self>, ErrorCode> {
+    pub fn get(id: u32) -> Result<Arc<Self>, ErrorCode> {
         {
             let disks = DISKS.read();
             if let Some(disk) = &disks.get(&id) {

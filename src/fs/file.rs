@@ -101,8 +101,8 @@ fn file_get_mode_by_string(mode_str: &str) -> FileMode {
 
 pub fn fread(
     out: &mut [u8],
-    size: u32,
-    nmemb: u32,
+    size: usize,
+    nmemb: usize,
     fd: FileDescriptorIndex,
 ) -> Result<(), ErrorCode> {
     if size == 0 || nmemb == 0 || fd < 1 {
@@ -171,8 +171,7 @@ pub fn fclose(fd: FileDescriptorIndex) -> Result<(), ErrorCode> {
 pub fn fopen(filename: &str, mode_str: &str) -> Result<FileDescriptorIndex, ErrorCode> {
     let root_path = parse_path(filename)?;
 
-    let drive_no: usize = usize::try_from(root_path.drive_no)?;
-    let disk = Disk::get(drive_no)?;
+    let disk = Disk::get(root_path.drive_no)?;
 
     let mode = file_get_mode_by_string(mode_str);
 
