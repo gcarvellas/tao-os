@@ -62,3 +62,4 @@ After building the ISO file, run `qemu-system-x86_64 -cdrom ./build/tao-os.iso`
 - Use proper locking instead of spin locks (lock api)
 - Stack trace
 - properly use rust test crate
+- properly make an ARCH folder to separate arch-dependent code (paging, IDT, bootloader, etc.)
