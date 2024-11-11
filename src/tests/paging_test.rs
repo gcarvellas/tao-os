@@ -12,6 +12,7 @@ macro_rules! log {
     };
 }
 
+// TODO this test should revert the addresses and page back to what they originally were
 pub fn paging_test() -> Result<(), ErrorCode> {
     log!("Creating a page...");
     let mut flags = PageDirectoryEntry::default();
@@ -22,15 +23,12 @@ pub fn paging_test() -> Result<(), ErrorCode> {
 
     log!("Allocating page and mapping...");
     let ptr = Box::new("No");
-    for i in 0..51200 {
-        // 512*512*4
+    for i in 0..51200 { // 512*512*4
         let address = i * 0x1000;
-        if address == 0x1000 {
-            chunk.set(address as PageAddress, ptr.as_ptr() as u64 | 0x7, flags)?
-        } else {
-            chunk.set(address as PageAddress, address, flags)?
-        }
+        chunk.set(address as PageAddress, address, flags)?
     }
+
+    chunk.set(0x1000 as PageAddress, ptr.as_ptr() as u64, flags)?;
 
     // TODO once chunk.switch() is called, the main kernel page is lost
     log!("Switching to page...");
@@ -39,10 +37,17 @@ pub fn paging_test() -> Result<(), ErrorCode> {
     log!("Verifying page mapping...");
     let ptr2 = 0x1000 as *mut char;
     unsafe {
+        *ptr2 = 'A';
+        *(ptr2.offset(1)) = 'B';
         let c1 = core::ptr::read(ptr2);
         let c2 = core::ptr::read(ptr2.add(1));
-        assert!(c1 as char == 'N');
-        assert!(c2 as char == 'o');
+
+        let mut ptr_chars = (*ptr).chars();
+        let c_p1 = ptr_chars.next().unwrap();
+        let c_p2 = ptr_chars.next().unwrap();
+
+        assert!(c1 == c_p1 && c1 == 'A', "Expected mapped value to be 'A' but got '{}'", c_p1);
+        assert!(c2 == c_p2 && c2 == 'B', "Expected mapped value to be 'B' but got '{}'", c_p2);
     }
     log!("Successfully tested paging");
     Ok(())

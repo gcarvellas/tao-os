@@ -16,7 +16,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y nasm xorriso grub-pc-bin grub-common mtools qemu-system-x86_64
+        sudo apt-get install -y nasm xorriso grub-pc-bin grub-common mtools qemu-system
 
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
