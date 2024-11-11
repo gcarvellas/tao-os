@@ -16,9 +16,7 @@ pub fn malloc_test() {
     let layout = Layout::new::<i32>();
 
     let ptr = unsafe { KERNEL_HEAP.alloc(layout) as *mut i32 };
-    if ptr.is_null() {
-        panic!("Failed to allocate memory");
-    }
+    assert!(!ptr.is_null(), "Failed to allocate memory");
 
     log!("Freeing heap memory...");
     unsafe {
